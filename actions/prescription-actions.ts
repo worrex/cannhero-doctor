@@ -439,6 +439,8 @@ export async function approvePrescription(id: string, notes?: string) {
       prescription_date: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      has_agreed_agb: true, // Required field in the schema
+      has_agreed_privacy_policy: true // Required field in the schema
     })
 
     if (createError) {
