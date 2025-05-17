@@ -188,7 +188,11 @@ export function DoctorSignupForm({ setIsSubmitting }: DoctorSignupFormProps) {
         })
 
         if (result.fieldErrors) {
-          setErrors(result.fieldErrors)
+          // Remove keys with undefined values to satisfy Record<string, string>
+          const filteredErrors = Object.fromEntries(
+            Object.entries(result.fieldErrors).filter(([_, v]) => typeof v === "string")
+          ) as Record<string, string>;
+          setErrors(filteredErrors);
         }
       }
     } catch (error) {

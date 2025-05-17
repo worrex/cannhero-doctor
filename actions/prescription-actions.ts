@@ -1,11 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { getServerSupabase } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { supabase } from "../lib/supabase";
 
 export async function getPrescriptionRequests() {
   try {
-    const supabase = await getServerSupabase()
+    const supabase = await createServerSupabaseClient();
 
     const { data, error } = await supabase
       .from("prescription_requests")
@@ -20,17 +21,7 @@ export async function getPrescriptionRequests() {
         doctor_notes,
         created_at,
         patient_id,
-        patients (
-          id,
-          birth_date,
-          user_id,
-          users (
-            id,
-            first_name,
-            last_name,
-            email
-          )
-        )
+        patients (id, birth_date, user_id)
       `)
       .order("created_at", { ascending: false })
 
@@ -39,13 +30,71 @@ export async function getPrescriptionRequests() {
       return []
     }
 
+    // We need to get user information separately because of the schema structure
+    const patientIds = data.map(request => request.patient_id);
+    
+    if (patientIds.length === 0) {
+      return [];
+    }
+
+    // Get all users associated with these patients
+    const { data: patientsWithUsers, error: userError } = await supabase
+      .from("patients")
+      .select(`
+        id,
+        birth_date,
+        user_id
+      `)
+      .in('id', patientIds);
+
+    if (userError) {
+      console.error("Error fetching patient users:", userError);
+      return [];
+    }
+
+    // Get user info for these patients
+    const userIds = patientsWithUsers.map(patient => patient.user_id);
+    
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email
+      `)
+      .in('id', userIds);
+
+    if (usersError) {
+      console.error("Error fetching users:", usersError);
+      return [];
+    }
+
+    // Define types for better type safety
+    type User = {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+    };
+
+    type Patient = {
+      id: string;
+      user_id: string;
+      birth_date: string | null;
+    };
+
+    // Create lookup maps for faster access
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const patientMap = new Map(patientsWithUsers.map(p => [p.id, p]));
+
     // Transform the data to match the expected format
-    const transformedData = data.map((request) => {
-      const patient = request.patients || {}
-      const user = patient.users || {}
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown"
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date()
-      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0
+    const transformedData = data.map((request: any) => {
+      const patient = patientMap.get(request.patient_id) as Patient | undefined || { id: '', user_id: '', birth_date: null };
+      const user = userMap.get(patient.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
+      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date();
+      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0;
 
       return {
         id: request.id,
@@ -73,7 +122,7 @@ export async function getPrescriptionRequests() {
 
 export async function getPendingPrescriptions() {
   try {
-    const supabase = await getServerSupabase()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("prescriptions")
@@ -86,18 +135,7 @@ export async function getPendingPrescriptions() {
         prescription_date,
         total_amount,
         notes,
-        created_at,
-        patients (
-          id,
-          user_id,
-          birth_date,
-          users (
-            id,
-            first_name,
-            last_name,
-            email
-          )
-        )
+        created_at
       `)
       .eq("status", "pending")
       .order("created_at", { ascending: false })
@@ -107,13 +145,57 @@ export async function getPendingPrescriptions() {
       return { success: false, error: error.message, data: [] }
     }
 
+    // Get patient data for these prescriptions
+    const patientIds = data.map(prescription => prescription.patient_id);
+    
+    if (patientIds.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Get all patients
+    const { data: patients, error: patientError } = await supabase
+      .from("patients")
+      .select(`
+        id,
+        user_id,
+        birth_date
+      `)
+      .in('id', patientIds);
+
+    if (patientError) {
+      console.error("Error fetching patients:", patientError);
+      return { success: false, error: patientError.message, data: [] };
+    }
+
+    // Get user data for these patients
+    const userIds = patients.map(patient => patient.user_id);
+    
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email
+      `)
+      .in('id', userIds);
+
+    if (usersError) {
+      console.error("Error fetching users:", usersError);
+      return { success: false, error: usersError.message, data: [] };
+    }
+
+    // Create lookup maps for faster access
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const patientMap = new Map(patients.map(p => [p.id, p]));
+
     // Transform the data to match the expected format
     const transformedData = data.map((prescription) => {
-      const patient = prescription.patients || {}
-      const user = patient.users || {}
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown"
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date()
-      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0
+      const patient = patientMap.get(prescription.patient_id) || { id: '', user_id: '', birth_date: null };
+      const user = userMap.get(patient.user_id) || { id: '', first_name: null, last_name: null, email: '' };
+      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
+      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date();
+      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0;
 
       return {
         id: prescription.id,
@@ -145,7 +227,7 @@ export async function getPendingPrescriptions() {
 
 export async function getApprovedPrescriptions() {
   try {
-    const supabase = await getServerSupabase()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("prescriptions")
@@ -158,18 +240,7 @@ export async function getApprovedPrescriptions() {
         prescription_date,
         total_amount,
         notes,
-        created_at,
-        patients (
-          id,
-          user_id,
-          birth_date,
-          users (
-            id,
-            first_name,
-            last_name,
-            email
-          )
-        )
+        created_at
       `)
       .eq("status", "approved")
       .order("created_at", { ascending: false })
@@ -178,14 +249,58 @@ export async function getApprovedPrescriptions() {
       console.error("Error fetching approved prescriptions:", error)
       return { success: false, error: error.message, data: [] }
     }
+    
+    // Get patient data for these prescriptions
+    const patientIds = data.map(prescription => prescription.patient_id);
+    
+    if (patientIds.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Get all patients
+    const { data: patients, error: patientError } = await supabase
+      .from("patients")
+      .select(`
+        id,
+        user_id,
+        birth_date
+      `)
+      .in('id', patientIds);
+
+    if (patientError) {
+      console.error("Error fetching patients:", patientError);
+      return { success: false, error: patientError.message, data: [] };
+    }
+
+    // Get user data for these patients
+    const userIds = patients.map(patient => patient.user_id);
+    
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email
+      `)
+      .in('id', userIds);
+
+    if (usersError) {
+      console.error("Error fetching users:", usersError);
+      return { success: false, error: usersError.message, data: [] };
+    }
+
+    // Create lookup maps for faster access
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const patientMap = new Map(patients.map(p => [p.id, p]));
 
     // Transform the data to match the expected format
     const transformedData = data.map((prescription) => {
-      const patient = prescription.patients || {}
-      const user = patient.users || {}
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown"
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date()
-      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0
+      const patient = patientMap.get(prescription.patient_id) || { id: '', user_id: '', birth_date: null };
+      const user = userMap.get(patient.user_id) || { id: '', first_name: null, last_name: null, email: '' };
+      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
+      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date();
+      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0;
 
       return {
         id: prescription.id,
@@ -217,7 +332,6 @@ export async function getApprovedPrescriptions() {
 
 export async function requestAdditionalInfo(id: string, notes: string) {
   try {
-    const supabase = await getServerSupabase()
 
     const { error } = await supabase
       .from("prescription_requests")
@@ -240,7 +354,7 @@ export async function requestAdditionalInfo(id: string, notes: string) {
 
 export async function approvePrescription(id: string, notes?: string) {
   try {
-    const supabase = await getServerSupabase()
+    const supabase = await createServerSupabaseClient()
     console.log("Approving prescription with ID:", id)
 
     // First, check if this is a prescription (not a request) that we're trying to approve
@@ -351,7 +465,7 @@ export async function approvePrescription(id: string, notes?: string) {
 
 export async function denyPrescription(id: string, notes?: string) {
   try {
-    const supabase = await getServerSupabase()
+
     console.log("Denying prescription with ID:", id)
 
     // First, check if this is a prescription (not a request) that we're trying to deny

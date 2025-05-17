@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase/client"
 
 export function TopBar() {
   const { user, signOut } = useAuth()
@@ -54,8 +54,8 @@ export function TopBar() {
         }
 
         if (doctorData) {
-          const firstName = doctorData.users?.first_name || ""
-          const lastName = doctorData.users?.last_name || ""
+          const firstName = doctorData.users?.[0]?.first_name || ""
+          const lastName = doctorData.users?.[0]?.last_name || ""
           const fullName = `${firstName} ${lastName}`.trim()
 
           setDoctorInfo({

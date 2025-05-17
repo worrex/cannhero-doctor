@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
+import { createBrowserSupabaseClient } from "@/lib/supabase/client"
 
 export function DashboardHeader() {
   const { user, signOut } = useAuth()
@@ -35,6 +35,7 @@ export function DashboardHeader() {
       if (!user) return
 
       try {
+        const supabase = createBrowserSupabaseClient()
         // Fetch doctor info
         const { data: doctorData, error: doctorError } = await supabase
           .from("doctors")

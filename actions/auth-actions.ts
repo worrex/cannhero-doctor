@@ -1,7 +1,6 @@
 "use server"
 
-import { createClient } from "@supabase/supabase-js"
-import { getServerSupabase } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 interface Address {
   street: string
@@ -35,12 +34,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       }
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
+    const supabase = await createServerSupabaseClient()
 
     // Check if a doctor with the given license number already exists
     const { data: existingDoctor, error: checkError } = await supabase
@@ -192,7 +186,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
 }
 
 export async function signIn(email: string, password: string) {
-  const supabase = await getServerSupabase()
+  const supabase = await createServerSupabaseClient()
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({

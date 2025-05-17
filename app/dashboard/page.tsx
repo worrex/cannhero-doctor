@@ -9,7 +9,8 @@ import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useToast } from "@/hooks/use-toast"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { supabase } from "@/lib/supabase/client"
 
 interface Prescription {
   id: string

@@ -3,8 +3,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
-import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { supabase } from "@/lib/supabase/client"
 
 type AuthContextType = {
   user: User | null
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set up auth state change listener
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event: string, session: Session | null) => {
       console.log("Auth state changed:", event)
 
       if (event === "SIGNED_IN" && session) {

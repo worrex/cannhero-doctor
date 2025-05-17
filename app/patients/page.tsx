@@ -4,10 +4,10 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Loader2, Users, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
+import { supabase } from "@/lib/supabase"
 
 interface Patient {
   id: string
@@ -57,13 +57,18 @@ export default function PatientsPage() {
         }
 
         // Transform the data
-        const transformedData = data.map((patient) => ({
-          id: patient.id,
-          fullName: `${patient.users?.first_name || ""} ${patient.users?.last_name || ""}`.trim() || "Unbekannt",
-          email: patient.users?.email || "Keine E-Mail",
-          birthDate: patient.birth_date,
-          createdAt: patient.created_at,
-        }))
+        const transformedData = data.map((patient) => {
+          // Get first user from the users array (if it exists)
+          const user = Array.isArray(patient.users) && patient.users.length > 0 ? patient.users[0] : null
+          
+          return {
+            id: patient.id,
+            fullName: `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Unbekannt",
+            email: user?.email || "Keine E-Mail",
+            birthDate: patient.birth_date,
+            createdAt: patient.created_at,
+          }
+        })
 
         setPatients(transformedData)
       } catch (error) {
