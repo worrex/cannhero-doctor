@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/utils/supabase"
 
 interface Address {
   street: string
@@ -26,18 +27,17 @@ export async function registerDoctor(data: DoctorRegistrationData) {
     // Create a new Supabase client with the service role key
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
     if (!supabaseUrl || !supabaseServiceKey) {
       return {
         success: false,
         error: "Supabase configuration is missing",
       }
     }
-
-    const supabase = await createServerSupabaseClient()
+    const supabase = await createServerClient()
+    const supabaseAdmin = await createAdminClient()
 
     // Check if a doctor with the given license number already exists
-    const { data: existingDoctor, error: checkError } = await supabase
+    const { data: existingDoctor, error: checkError } = await supabaseAdmin
       .from("doctors")
       .select("license_number")
       .eq("license_number", data.licenseNumber)
@@ -63,7 +63,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
     }
 
     // Check if a user with the given email already exists
-    const { data: existingUser, error: emailCheckError } = await supabase
+    const { data: existingUser, error: emailCheckError } = await supabaseAdmin
       .from("users")
       .select("email")
       .eq("email", data.email)
@@ -87,19 +87,35 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       }
     }
 
-    // 1. Create the user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // 1. Create the user in Supabase Auth using standard signup
+    const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
       email: data.email,
       password: data.password,
-      email_confirm: true,
-      user_metadata: {
-        first_name: data.firstName,
-        last_name: data.lastName,
-      },
+      options: {
+        data: {
+          first_name: data.firstName,
+          last_name: data.lastName,
+        }
+      }
     })
 
     if (authError) {
       console.error("Auth error:", authError)
+      
+      // Handle specific error codes for better user feedback
+      if (authError.status === 400) {
+        if (authError.code === 'email_address_invalid') {
+          return {
+            success: false,
+            error: "Die angegebene E-Mail-Adresse ist ungültig. Bitte verwenden Sie eine gültige E-Mail-Adresse.",
+            fieldErrors: {
+              email: "Ungültige E-Mail-Adresse. Bitte verwenden Sie eine existierende, gültige E-Mail."
+            }
+          }
+        }
+        // Add more specific error handling for other codes as needed
+      }
+      
       return {
         success: false,
         error: authError.message,
@@ -114,7 +130,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
     }
 
     // 2. Create the user record in the users table
-    const { error: userError } = await supabase.from("users").insert({
+    const { error: userError } = await supabaseAdmin.from("users").insert({
       id: authData.user.id,
       email: data.email,
       first_name: data.firstName,
@@ -122,13 +138,13 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       phone_number: data.phoneNumber,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_active: true,
+      is_active: false, // User is inactive until approved
     })
 
     if (userError) {
       console.error("User creation error:", userError)
       // Clean up the auth user if user creation fails
-      await supabase.auth.admin.deleteUser(authData.user.id)
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
       return {
         success: false,
         error: userError.message,
@@ -136,7 +152,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
     }
 
     // 3. Create the doctor record in the doctors table
-    const { error: doctorError } = await supabase.from("doctors").insert({
+    const { error: doctorError } = await supabaseAdmin.from("doctors").insert({
       user_id: authData.user.id,
       title: data.title || null,
       specialty: data.specialty || null,
@@ -148,14 +164,15 @@ export async function registerDoctor(data: DoctorRegistrationData) {
         postal_code: data.address.postalCode,
         country: data.address.country,
       },
-      is_verified: false, // Requires admin approval
+      is_verified: false, // Doctor has verified their ID
+      is_approved: false, // Requires admin approval
     })
 
     if (doctorError) {
       console.error("Doctor creation error:", doctorError)
       // Clean up both the auth user and the user record if doctor creation fails
-      await supabase.from("users").delete().eq("id", authData.user.id)
-      await supabase.auth.admin.deleteUser(authData.user.id)
+      await supabaseAdmin.from("users").delete().eq("id", authData.user.id)
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
       return {
         success: false,
         error: doctorError.message,
@@ -163,7 +180,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
     }
 
     // 4. Create a user_roles entry
-    const { error: roleError } = await supabase.from("user_roles").insert({
+    const { error: roleError } = await supabaseAdmin.from("user_roles").insert({
       user_id: authData.user.id,
       role: "doctor",
     })

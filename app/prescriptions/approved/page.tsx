@@ -7,9 +7,26 @@ import { getApprovedPrescriptions } from "@/actions/prescription-actions"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
 
+// Define interface for prescription items
+interface Prescription {
+  id: any
+  patientId: any
+  doctorId: any
+  patientName: string
+  patientExternalId: any
+  age: number
+  requestDate: any
+  status: any
+  prescriptionPlan: any
+  prescriptionDate: any
+  totalAmount: any
+  notes: any
+  profileImage: string
+}
+
 export default function ApprovedPrescriptionsPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [prescriptions, setPrescriptions] = useState([])
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [isPatientDetailOpen, setIsPatientDetailOpen] = useState(false)
   const { toast } = useToast()
@@ -19,6 +36,7 @@ export default function ApprovedPrescriptionsPage() {
       try {
         const result = await getApprovedPrescriptions()
         if (result.success) {
+          // Set prescriptions data from API response or default to empty array if no data
           setPrescriptions(result.data || [])
         } else {
           toast({

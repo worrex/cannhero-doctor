@@ -14,8 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, Clock, Mail, Phone, MapPin, AlertTriangle, FileText, User } from "lucide-react"
 import { format } from "date-fns"
 import { de } from "date-fns/locale"
-import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { supabase } from "@/lib/supabase/client"
 
 interface PatientDetailDialogProps {
   patientId: string | null

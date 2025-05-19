@@ -3,6 +3,8 @@ import type { PatientRequest } from "@/types/patient"
 export const patientRequests: PatientRequest[] = [
   {
     id: "PT-2023-001",
+    external_id: "EXT-001",
+    patientId: "P-001",
     patientName: "Johannes Schmidt",
     age: 42,
     requestDate: "2023-05-15T10:30:00Z",
@@ -16,6 +18,8 @@ export const patientRequests: PatientRequest[] = [
   },
   {
     id: "PT-2023-002",
+    external_id: "EXT-002",
+    patientId: "P-002",
     patientName: "Emma Müller",
     age: 35,
     requestDate: "2023-05-14T14:45:00Z",
@@ -28,6 +32,8 @@ export const patientRequests: PatientRequest[] = [
   },
   {
     id: "PT-2023-003",
+    external_id: "EXT-003",
+    patientId: "P-003",
     patientName: "Michael Weber",
     age: 58,
     requestDate: "2023-05-13T09:15:00Z",
@@ -40,6 +46,8 @@ export const patientRequests: PatientRequest[] = [
   },
   {
     id: "PT-2023-004",
+    external_id: "EXT-004",
+    patientId: "P-004",
     patientName: "Sarah Fischer",
     age: 29,
     requestDate: "2023-05-12T16:20:00Z",
@@ -53,6 +61,8 @@ export const patientRequests: PatientRequest[] = [
   },
   {
     id: "PT-2023-005",
+    external_id: "EXT-005",
+    patientId: "P-005",
     patientName: "David Becker",
     age: 45,
     requestDate: "2023-05-11T11:00:00Z",

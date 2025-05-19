@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase/client"
 
 interface Patient {
   id: string

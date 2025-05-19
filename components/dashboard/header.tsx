@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { createBrowserSupabaseClient } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase/client"
 
 export function DashboardHeader() {
   const { user, signOut } = useAuth()
@@ -35,7 +35,6 @@ export function DashboardHeader() {
       if (!user) return
 
       try {
-        const supabase = createBrowserSupabaseClient()
         // Fetch doctor info
         const { data: doctorData, error: doctorError } = await supabase
           .from("doctors")
@@ -56,8 +55,8 @@ export function DashboardHeader() {
         }
 
         if (doctorData) {
-          const firstName = doctorData.users?.first_name || ""
-          const lastName = doctorData.users?.last_name || ""
+          const firstName = doctorData.users?.[0]?.first_name || ""
+          const lastName = doctorData.users?.[0]?.last_name || ""
           const fullName = `${firstName} ${lastName}`.trim()
 
           setDoctorInfo({
@@ -98,7 +97,6 @@ export function DashboardHeader() {
             <div className="relative h-10 w-40 mr-2">
               <Image src="/absolem420-logo.svg" alt="Absolem420 Logo" fill className="object-contain" />
             </div>
-            <span className="text-lg font-semibold text-primary ml-2 hidden md:inline">Arztportal</span>
           </Link>
         </div>
 

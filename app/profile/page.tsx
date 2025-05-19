@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase/index"
 
 interface DoctorProfile {
   id: string
@@ -69,10 +69,13 @@ export default function ProfilePage() {
 
     if (field.includes(".")) {
       const [parent, child] = field.split(".")
+      const parentKey = parent as keyof DoctorProfile
+      const parentValue = profile[parentKey] || {}
+      
       setProfile({
         ...profile,
         [parent]: {
-          ...profile[parent as keyof DoctorProfile],
+          ...(typeof parentValue === 'object' ? parentValue : {}),
           [child]: value,
         },
       })

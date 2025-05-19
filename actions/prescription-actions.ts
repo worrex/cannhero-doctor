@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import { supabase } from "../lib/supabase";
+import { supabase } from "@/lib/supabase/client";
 
 export async function getPrescriptionRequests() {
   try {
@@ -21,7 +21,8 @@ export async function getPrescriptionRequests() {
         doctor_notes,
         created_at,
         patient_id,
-        patients (id, birth_date, user_id)
+        user_id,
+        total_amount
       `)
       .order("created_at", { ascending: false })
 
@@ -30,46 +31,20 @@ export async function getPrescriptionRequests() {
       return []
     }
 
+    if (data.length === 0) {
+      return [];
+    }
+    
+    // Collect user IDs either from patient relationships or direct user_id
+    const directUserIds = data
+      .filter(request => request.user_id)
+      .map(request => request.user_id);
+      
     // We need to get user information separately because of the schema structure
-    const patientIds = data.map(request => request.patient_id);
+    const patientIds = data
+      .filter(request => request.patient_id)
+      .map(request => request.patient_id);
     
-    if (patientIds.length === 0) {
-      return [];
-    }
-
-    // Get all users associated with these patients
-    const { data: patientsWithUsers, error: userError } = await supabase
-      .from("patients")
-      .select(`
-        id,
-        birth_date,
-        user_id
-      `)
-      .in('id', patientIds);
-
-    if (userError) {
-      console.error("Error fetching patient users:", userError);
-      return [];
-    }
-
-    // Get user info for these patients
-    const userIds = patientsWithUsers.map(patient => patient.user_id);
-    
-    const { data: users, error: usersError } = await supabase
-      .from("users")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        email
-      `)
-      .in('id', userIds);
-
-    if (usersError) {
-      console.error("Error fetching users:", usersError);
-      return [];
-    }
-
     // Define types for better type safety
     type User = {
       id: string;
@@ -84,22 +59,86 @@ export async function getPrescriptionRequests() {
       birth_date: string | null;
     };
 
+    // Get patient data if we have patient IDs
+    let patientsWithUsers: Patient[] = [];
+    if (patientIds.length > 0) {
+      const { data: patientsData, error: userError } = await supabase
+        .from("patients")
+        .select(`
+          id,
+          birth_date,
+          user_id
+        `)
+        .in('id', patientIds);
+  
+      if (userError) {
+        console.error("Error fetching patient users:", userError);
+      } else {
+        patientsWithUsers = patientsData;
+      }
+    }
+
+    // Get user info for both direct user IDs and patient-related user IDs
+    const patientUserIds = patientsWithUsers.map(patient => patient.user_id);
+    const allUserIds = [...new Set([...directUserIds, ...patientUserIds])];
+    
+    let users: User[] = [];
+    if (allUserIds.length > 0) {
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email
+        `)
+        .in('id', allUserIds);
+  
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+      } else {
+        users = usersData;
+      }
+    }
+
     // Create lookup maps for faster access
     const userMap = new Map(users.map(u => [u.id, u]));
     const patientMap = new Map(patientsWithUsers.map(p => [p.id, p]));
 
     // Transform the data to match the expected format
     const transformedData = data.map((request: any) => {
-      const patient = patientMap.get(request.patient_id) as Patient | undefined || { id: '', user_id: '', birth_date: null };
-      const user = userMap.get(patient.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+      let user;
+      let patient;
+      let age = 0;
+      
+      // First check if we have a direct user_id
+      if (request.user_id) {
+        user = userMap.get(request.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+        patient = { id: '', user_id: request.user_id, birth_date: null };
+      } 
+      // Then try patient relationship
+      else if (request.patient_id) {
+        patient = patientMap.get(request.patient_id) as Patient | undefined || { id: '', user_id: '', birth_date: null };
+        user = userMap.get(patient.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+        
+        if (patient.birth_date) {
+          const birthDate = new Date(patient.birth_date);
+          age = new Date().getFullYear() - birthDate.getFullYear();
+        }
+      } 
+      // Fallback to empty user if neither is available
+      else {
+        user = { id: '', first_name: null, last_name: null, email: '' };
+        patient = { id: '', user_id: '', birth_date: null };
+      }
+      
       const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date();
-      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0;
 
       return {
         id: request.id,
         external_id: request.external_id || request.id.substring(0, 8), // Use external_id or part of UUID as external ID
-        patientId: request.patient_id,
+        patientId: request.patient_id || '',
+        userId: request.user_id || '',
         patientName: fullName,
         age: age,
         requestDate: request.created_at,
@@ -109,6 +148,7 @@ export async function getPrescriptionRequests() {
         medicationHistory: request.medication_history || "",
         additionalNotes: request.additional_notes || "",
         doctorNotes: request.doctor_notes || "",
+        totalAmount: request.total_amount || 0,
         profileImage: `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
       }
     })

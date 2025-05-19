@@ -90,14 +90,10 @@ export function TopBar() {
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center">
-          <Link href="/dashboard" className="flex items-center">
-            <span className="text-lg font-semibold text-primary ml-8 md:ml-0">Arztportal</span>
-          </Link>
-        </div>
 
-        <div className="flex items-center space-x-4">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+
+        <div className="flex items-space-between space-x-4">
           <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifications(0)}>
             <Bell className="h-5 w-5 text-gray-600" />
             {notifications > 0 && (
