@@ -135,21 +135,18 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       // First, execute a dummy query to ensure database connection is established
       await supabaseAdmin.rpc('get_service_role');
       
-      // 2. Create the user record in the users table - must happen first
-      const { error: userError } = await supabaseAdmin.from("users").insert({
-        id: authData.user.id,
-        email: data.email,
-        first_name: data.firstName,
-        last_name: data.lastName,
+      // 2. The user in public.users is already created by the database trigger on_auth_user_created
+      // So we just need to update it with the additional fields not set by the trigger
+      const { error: userError } = await supabaseAdmin.from("users").update({
         phone_number: data.phoneNumber,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
         is_active: false, // User is inactive until approved
-      }).select();
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", authData.user.id);
 
       if (userError) {
-        console.error("User creation error:", userError);
-        // Clean up the auth user if user creation fails
+        console.error("User update error:", userError);
+        // Clean up the auth user if user update fails
         await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
         return {
           success: false,
@@ -190,7 +187,8 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       }
       
       // 4. Create the doctor record in the doctors table - has FK to users
-      const { error: doctorError } = await supabaseAdmin.from("doctors").insert({
+      console.log('Creating doctor record with user_id:', authData.user.id);
+      const { data: doctorData, error: doctorError } = await supabaseAdmin.from("doctors").insert({
         user_id: authData.user.id,
         title: data.title || null,
         specialty: data.specialty || null,
@@ -204,7 +202,7 @@ export async function registerDoctor(data: DoctorRegistrationData) {
         },
         is_verified: false, // Doctor has verified their ID
         is_approved: false, // Requires admin approval
-      });
+      }).select();
 
       if (doctorError) {
         console.error("Doctor creation error:", doctorError);
@@ -228,6 +226,8 @@ export async function registerDoctor(data: DoctorRegistrationData) {
         .eq("id", authData.user.id)
         .limit(1);
       
+      console.log('Checking user exists before creating approval request:', checkUser);
+      
       if (!checkUser || checkUser.length === 0) {
         console.error("User not found before creating approval request");
         return {
@@ -237,16 +237,35 @@ export async function registerDoctor(data: DoctorRegistrationData) {
       }
       
       // Now create the approval request
-      const { error: approvalError } = await supabaseAdmin.from("doctor_approval_requests").insert({
+      console.log('Creating doctor approval request for user_id:', authData.user.id);
+      const { data: approvalData, error: approvalError } = await supabaseAdmin.from("doctor_approval_requests").insert({
         user_id: authData.user.id,
         status: "pending"
-      });
+      }).select();
       
       if (approvalError) {
         console.error("Doctor approval request creation error:", approvalError);
         // We won't clean up here, as the doctor record is created and functional.
         // An admin can still manually approve the doctor even without an approval request.
+      } else {
+        console.log('Successfully created doctor approval request:', approvalData);
       }
+      
+      // Final verification to confirm both doctor and approval request were created
+      const { data: finalDoctorCheck } = await supabaseAdmin
+        .from("doctors")
+        .select("id, user_id")
+        .eq("user_id", authData.user.id)
+        .single();
+        
+      const { data: finalApprovalCheck } = await supabaseAdmin
+        .from("doctor_approval_requests")
+        .select("id, user_id, status")
+        .eq("user_id", authData.user.id)
+        .single();
+        
+      console.log('Final verification - Doctor record:', finalDoctorCheck);
+      console.log('Final verification - Approval request:', finalApprovalCheck);
     } catch (dbError) {
       console.error("Database transaction error:", dbError);
       // Clean up in case of any unexpected errors

@@ -38,15 +38,29 @@ export function TopBar() {
         const { data: doctorData, error: doctorError } = await supabase
           .from("doctors")
           .select(`
+            id,
             title,
             specialty,
-            users:user_id (
-              first_name,
-              last_name
-            )
+            user_id
           `)
           .eq("user_id", user.id)
           .single()
+        
+        // If doctor data is found, fetch the associated user data
+        let userData = null
+        if (doctorData && !doctorError) {
+          const { data: userInfo, error: userError } = await supabase
+            .from("users")
+            .select("first_name, last_name")
+            .eq("id", doctorData.user_id)
+            .single()
+            
+          if (!userError) {
+            userData = userInfo
+          } else {
+            console.error("Error fetching user info:", userError)
+          }
+        }
 
         if (doctorError) {
           console.error("Error fetching doctor info:", doctorError)
@@ -54,8 +68,8 @@ export function TopBar() {
         }
 
         if (doctorData) {
-          const firstName = doctorData.users?.[0]?.first_name || ""
-          const lastName = doctorData.users?.[0]?.last_name || ""
+          const firstName = userData?.first_name || ""
+          const lastName = userData?.last_name || ""
           const fullName = `${firstName} ${lastName}`.trim()
 
           setDoctorInfo({
