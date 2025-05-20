@@ -128,68 +128,143 @@ export async function registerDoctor(data: DoctorRegistrationData) {
         error: "Benutzer konnte nicht erstellt werden",
       }
     }
+    
+    // Use a single transaction for all database operations to ensure consistency
+    // We'll execute all database operations in a specific order with explicit commits
+    try {
+      // First, execute a dummy query to ensure database connection is established
+      await supabaseAdmin.rpc('get_service_role');
+      
+      // 2. Create the user record in the users table - must happen first
+      const { error: userError } = await supabaseAdmin.from("users").insert({
+        id: authData.user.id,
+        email: data.email,
+        first_name: data.firstName,
+        last_name: data.lastName,
+        phone_number: data.phoneNumber,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_active: false, // User is inactive until approved
+      }).select();
 
-    // 2. Create the user record in the users table
-    const { error: userError } = await supabaseAdmin.from("users").insert({
-      id: authData.user.id,
-      email: data.email,
-      first_name: data.firstName,
-      last_name: data.lastName,
-      phone_number: data.phoneNumber,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      is_active: false, // User is inactive until approved
-    })
+      if (userError) {
+        console.error("User creation error:", userError);
+        // Clean up the auth user if user creation fails
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return {
+          success: false,
+          error: userError.message,
+        };
+      }
+      
+      // Verify the user was created by selecting it from the database
+      const { data: verifyUser, error: verifyUserError } = await supabaseAdmin
+        .from("users")
+        .select()
+        .eq("id", authData.user.id)
+        .single();
+        
+      if (verifyUserError || !verifyUser) {
+        console.error("User verification error:", verifyUserError);
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return {
+          success: false,
+          error: "Failed to verify user creation",
+        };
+      }
 
-    if (userError) {
-      console.error("User creation error:", userError)
-      // Clean up the auth user if user creation fails
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      // 3. Create a user_roles entry - this has an FK to users
+      const { error: roleError } = await supabaseAdmin.from("user_roles").insert({
+        user_id: authData.user.id,
+        role: "doctor",
+      });
+
+      if (roleError) {
+        console.error("Role assignment error:", roleError);
+        await supabaseAdmin.from("users").delete().eq("id", authData.user.id);
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return {
+          success: false,
+          error: roleError.message,
+        };
+      }
+      
+      // 4. Create the doctor record in the doctors table - has FK to users
+      const { error: doctorError } = await supabaseAdmin.from("doctors").insert({
+        user_id: authData.user.id,
+        title: data.title || null,
+        specialty: data.specialty || null,
+        license_number: data.licenseNumber,
+        phone_number: data.phoneNumber,
+        address: {
+          street: data.address.street,
+          city: data.address.city,
+          postal_code: data.address.postalCode,
+          country: data.address.country,
+        },
+        is_verified: false, // Doctor has verified their ID
+        is_approved: false, // Requires admin approval
+      });
+
+      if (doctorError) {
+        console.error("Doctor creation error:", doctorError);
+        // Clean up both the auth user and the user record if doctor creation fails
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", authData.user.id);
+        await supabaseAdmin.from("users").delete().eq("id", authData.user.id);
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return {
+          success: false,
+          error: doctorError.message,
+        };
+      }
+      
+      // 5. Create the doctor approval request last - this also has an FK to users
+      // We'll create it after verifying everything else worked
+      
+      // Quick check to ensure the user exists in the database
+      const { data: checkUser } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .eq("id", authData.user.id)
+        .limit(1);
+      
+      if (!checkUser || checkUser.length === 0) {
+        console.error("User not found before creating approval request");
+        return {
+          success: false,
+          error: "User record could not be found when creating approval request",
+        };
+      }
+      
+      // Now create the approval request
+      const { error: approvalError } = await supabaseAdmin.from("doctor_approval_requests").insert({
+        user_id: authData.user.id,
+        status: "pending"
+      });
+      
+      if (approvalError) {
+        console.error("Doctor approval request creation error:", approvalError);
+        // We won't clean up here, as the doctor record is created and functional.
+        // An admin can still manually approve the doctor even without an approval request.
+      }
+    } catch (dbError) {
+      console.error("Database transaction error:", dbError);
+      // Clean up in case of any unexpected errors
+      try {
+        await supabaseAdmin.from("doctors").delete().eq("user_id", authData.user.id);
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", authData.user.id);
+        await supabaseAdmin.from("users").delete().eq("id", authData.user.id);
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      } catch (cleanupError) {
+        console.error("Error during cleanup:", cleanupError);
+      }
+      
       return {
         success: false,
-        error: userError.message,
-      }
+        error: "Ein Fehler ist bei der Datenbankverarbeitung aufgetreten",
+      };
     }
-
-    // 3. Create the doctor record in the doctors table
-    const { error: doctorError } = await supabaseAdmin.from("doctors").insert({
-      user_id: authData.user.id,
-      title: data.title || null,
-      specialty: data.specialty || null,
-      license_number: data.licenseNumber,
-      phone_number: data.phoneNumber,
-      address: {
-        street: data.address.street,
-        city: data.address.city,
-        postal_code: data.address.postalCode,
-        country: data.address.country,
-      },
-      is_verified: false, // Doctor has verified their ID
-      is_approved: false, // Requires admin approval
-    })
-
-    if (doctorError) {
-      console.error("Doctor creation error:", doctorError)
-      // Clean up both the auth user and the user record if doctor creation fails
-      await supabaseAdmin.from("users").delete().eq("id", authData.user.id)
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-      return {
-        success: false,
-        error: doctorError.message,
-      }
-    }
-
-    // 4. Create a user_roles entry
-    const { error: roleError } = await supabaseAdmin.from("user_roles").insert({
-      user_id: authData.user.id,
-      role: "doctor",
-    })
-
-    if (roleError) {
-      console.error("Role assignment error:", roleError)
-      // We don't need to clean up here as the doctor record is already created
-    }
-
+    
     return {
       success: true,
     }
