@@ -92,8 +92,11 @@ export function TopBar() {
     <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
 
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        {/* Left side empty or could contain a title/logo here if needed */}
+        <div className="flex-1"></div>
 
-        <div className="flex items-space-between space-x-4">
+        {/* Right side with notification and user profile */}
+        <div className="flex items-center space-x-4">
           <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifications(0)}>
             <Bell className="h-5 w-5 text-gray-600" />
             {notifications > 0 && (
