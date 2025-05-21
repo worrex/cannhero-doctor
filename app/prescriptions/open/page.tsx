@@ -24,6 +24,7 @@ export default function OpenPrescriptionsPage() {
   const [hasShownError, setHasShownError] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [isPatientDetailOpen, setIsPatientDetailOpen] = useState(false)
+console.log("requests", requests)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -33,6 +34,8 @@ export default function OpenPrescriptionsPage() {
 
         // Filter only new requests
         setRequests(requestsData.filter((request) => request.status === "new"))
+
+        console.log("requestsData", requestsData,pendingResult)
 
         if (pendingResult.success) {
           setPendingPrescriptions(pendingResult.data || [])

@@ -97,12 +97,63 @@ export async function getPrescriptionRequests() {
         console.error("Error fetching users:", usersError);
       } else {
         users = usersData;
+        console.log(`Found ${users.length} users in database`);
       }
     }
 
     // Create lookup maps for faster access
     const userMap = new Map(users.map(u => [u.id, u]));
     const patientMap = new Map(patientsWithUsers.map(p => [p.id, p]));
+
+    // Pre-query all missing users and patients to avoid async issues in map
+    // First identify any missing users or patients that need to be looked up
+    const missingUserIds = [];
+    const missingPatientIds = [];
+    
+    for (const request of data) {
+      if (request.user_id && !userMap.has(request.user_id)) {
+        missingUserIds.push(request.user_id);
+      }
+      
+      if (request.patient_id && !patientMap.has(request.patient_id)) {
+        missingPatientIds.push(request.patient_id);
+      }
+    }
+    
+    // Look up missing patients first
+    if (missingPatientIds.length > 0) {
+      console.log(`Looking up ${missingPatientIds.length} missing patients`);
+      const { data: missingPatients } = await supabase
+        .from("patients")
+        .select("id, user_id, birth_date")
+        .in("id", missingPatientIds);
+        
+      if (missingPatients) {
+        for (const patient of missingPatients) {
+          patientMap.set(patient.id, patient);
+          
+          // Add any new user IDs to our missing list
+          if (patient.user_id && !userMap.has(patient.user_id)) {
+            missingUserIds.push(patient.user_id);
+          }
+        }
+      }
+    }
+    
+    // Now look up any missing users
+    if (missingUserIds.length > 0) {
+      console.log(`Looking up ${missingUserIds.length} missing users`);
+      const { data: missingUsers } = await supabase
+        .from("users")
+        .select("id, first_name, last_name, email")
+        .in("id", missingUserIds);
+        
+      if (missingUsers) {
+        for (const user of missingUsers) {
+          userMap.set(user.id, user);
+        }
+      }
+    }
 
     // Transform the data to match the expected format
     const transformedData = data.map((request: any) => {
@@ -118,7 +169,12 @@ export async function getPrescriptionRequests() {
       // Then try patient relationship
       else if (request.patient_id) {
         patient = patientMap.get(request.patient_id) as Patient | undefined || { id: '', user_id: '', birth_date: null };
-        user = userMap.get(patient.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+        
+        if (patient.user_id) {
+          user = userMap.get(patient.user_id) as User | undefined || { id: '', first_name: null, last_name: null, email: '' };
+        } else {
+          user = { id: '', first_name: null, last_name: null, email: '' };
+        }
         
         if (patient.birth_date) {
           const birthDate = new Date(patient.birth_date);
@@ -131,7 +187,14 @@ export async function getPrescriptionRequests() {
         patient = { id: '', user_id: '', birth_date: null };
       }
       
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
+      // Better name formatting with proper fallbacks
+      let fullName = "Unknown";
+      if (user && (user.first_name || user.last_name)) {
+        fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+        console.log(`Found user name: ${fullName} for request ${request.id}`);
+      } else {
+        console.log(`No user name found for request ${request.id}, using Unknown`);
+      }
 
       return {
         id: request.id,
@@ -148,7 +211,7 @@ export async function getPrescriptionRequests() {
         additionalNotes: request.additional_notes || "",
         doctorNotes: request.doctor_notes || "",
         totalAmount: request.total_amount || 0,
-        profileImage: `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
+        profileImage: `/user-icon.svg`,
       }
     })
 

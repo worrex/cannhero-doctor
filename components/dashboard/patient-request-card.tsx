@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { ChevronDown, ChevronUp, Clock } from "lucide-react"
+import { ChevronDown, ChevronUp, Clock, UserIcon } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -102,12 +102,7 @@ export function PatientRequestCard({
                 className="relative h-16 w-16 rounded-full overflow-hidden cursor-pointer"
                 onClick={handlePatientClick}
               >
-                <Image
-                  src={request.profileImage || "/placeholder.svg?height=64&width=64&query=patient"}
-                  alt={request.patientName}
-                  fill
-                  className="object-cover"
-                />
+                <UserIcon className="h-16 w-16 text-gray-400" />
               </div>
             </div>
 
