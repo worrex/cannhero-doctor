@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import { supabase } from "@/lib/supabase/client";
 
 export async function getPrescriptionRequests() {
   try {
@@ -372,10 +371,16 @@ export async function getApprovedPrescriptions() {
 
 export async function requestAdditionalInfo(id: string, notes: string) {
   try {
-
+    const supabase = await createServerSupabaseClient();
+    
+    // Update the prescription request status and add doctor notes
     const { error } = await supabase
       .from("prescription_requests")
-      .update({ status: "info_requested", doctor_notes: notes, updated_at: new Date().toISOString() })
+      .update({
+        status: "info_requested",
+        doctor_notes: notes,
+        updated_at: new Date().toISOString()
+      })
       .eq("id", id)
 
     if (error) {
@@ -394,7 +399,7 @@ export async function requestAdditionalInfo(id: string, notes: string) {
 
 export async function approvePrescription(id: string, notes?: string) {
   try {
-    const supabase = await createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient();
     console.log("Approving prescription with ID:", id)
 
     // First, check if this is a prescription (not a request) that we're trying to approve
@@ -507,64 +512,22 @@ export async function approvePrescription(id: string, notes?: string) {
 
 export async function denyPrescription(id: string, notes?: string) {
   try {
-
-    console.log("Denying prescription with ID:", id)
-
-    // First, check if this is a prescription (not a request) that we're trying to deny
-    const { data: prescriptionData, error: prescriptionError } = await supabase
-      .from("prescriptions")
-      .select("id, status")
-      .eq("id", id)
-
-    if (prescriptionError) {
-      console.error("Error checking prescription:", prescriptionError)
-    }
-
-    // If we found a prescription with this ID, update it directly
-    if (prescriptionData && prescriptionData.length > 0) {
-      console.log("Found existing prescription, updating status to denied")
-      const { error: updateError } = await supabase
-        .from("prescriptions")
-        .update({
-          status: "denied",
-          notes: notes || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-
-      if (updateError) {
-        console.error("Error updating prescription:", updateError)
-        return { success: false, error: updateError.message }
-      }
-
-      revalidatePath("/dashboard")
-      revalidatePath("/prescriptions/open")
-      revalidatePath("/prescriptions/denied")
-      return { success: true }
-    }
-
-    // If not found in prescriptions, check and update prescription_requests
+    const supabase = await createServerSupabaseClient();
+    
+    // Step 1: Get the prescription request data
     const { data: requestData, error: requestError } = await supabase
       .from("prescription_requests")
-      .select("id")
+      .select("*")
       .eq("id", id)
+      .single();
 
     if (requestError) {
-      console.error("Error checking prescription request:", requestError)
-      return { success: false, error: requestError.message }
+      console.error("Error fetching prescription request:", requestError);
+      return { success: false, error: requestError.message };
     }
 
-    if (!requestData || requestData.length === 0) {
-      console.error("No prescription request or prescription found with ID:", id)
-      return {
-        success: false,
-        error:
-          "No prescription request or prescription found with this ID. The record may have been deleted or modified.",
-      }
-    }
-
-    // Update the prescription request
-    const { error } = await supabase
+    // Step 2: Update the prescription request status
+    const { error: updateError } = await supabase
       .from("prescription_requests")
       .update({
         status: "denied",
@@ -573,9 +536,9 @@ export async function denyPrescription(id: string, notes?: string) {
       })
       .eq("id", id)
 
-    if (error) {
-      console.error("Error denying prescription:", error)
-      return { success: false, error: error.message }
+    if (updateError) {
+      console.error("Error denying prescription:", updateError)
+      return { success: false, error: updateError.message }
     }
 
     revalidatePath("/dashboard")
