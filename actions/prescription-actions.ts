@@ -632,28 +632,60 @@ export async function getApprovedPrescriptions() {
     const userMap = new Map(users.map(u => [u.id, u]));
     const patientMap = new Map(patients.map(p => [p.id, p]));
 
+    // Collect doctor IDs for fetching their names
+    const doctorIds = data.map(p => p.doctor_id).filter(id => id);
+    let doctorMap = new Map();
+    if (doctorIds.length > 0) {
+      const { data: doctorsData, error: doctorsError } = await supabase
+        .from("users") // Assuming doctor details are in 'users' table
+        .select("id, first_name, last_name")
+        .in("id", doctorIds);
+
+      if (doctorsError) {
+        console.error("Error fetching approving doctors:", doctorsError);
+        // Potentially handle error, e.g., by returning partial data or an error response
+      } else if (doctorsData) {
+        doctorMap = new Map(doctorsData.map(doc => [doc.id, `${doc.first_name || ""} ${doc.last_name || ""}`.trim() || "Unknown Doctor"]));
+      }
+    }
+
     // Transform the data to match the expected format
     const transformedData = data.map((prescription) => {
       const patient = patientMap.get(prescription.patient_id) || { id: '', user_id: '', birth_date: null };
       const user = userMap.get(patient.user_id) || { id: '', first_name: null, last_name: null, email: '' };
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : new Date();
-      const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : 0;
+      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown Patient";
+      const birthDate = patient.birth_date ? new Date(patient.birth_date) : null;
+      let age = null;
+      if (birthDate) {
+        const today = new Date();
+        age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+      }
+      const approverName = doctorMap.get(prescription.doctor_id) || "Unknown Doctor";
 
       return {
         id: prescription.id,
+        external_id: prescription.id.substring(0, 8), // Consistent external_id
         patientId: prescription.patient_id,
-        doctorId: prescription.doctor_id,
         patientName: fullName,
-        patientExternalId: prescription.id.substring(0, 8), // Use part of UUID as external ID
         age: age,
-        requestDate: prescription.created_at,
-        status: prescription.status,
-        prescriptionPlan: prescription.prescription_plan,
-        prescriptionDate: prescription.prescription_date,
+        requestDate: prescription.created_at, // Original request/creation date of this prescription entry
+        // If prescription_date is the actual approval date, use it for a specific field if needed by UI
+        // For PatientRequestCard, 'requestDate' is generally the primary date shown.
+        // We can add 'approvedDate' if PatientRequestCard is modified to show it.
+        status: prescription.status as "new" | "approved" | "denied" | "info_requested",
+        doctorNotes: prescription.notes, // Notes from the 'prescriptions' table
+        approvedBy: approverName, // Name of the doctor who approved
         totalAmount: prescription.total_amount,
-        notes: prescription.notes,
         profileImage: `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
+        // Placeholder fields for PatientRequest compatibility
+        medicalCondition: "N/A",
+        preferences: "N/A",
+        medicationHistory: "N/A",
+        products: [], // prescription.prescription_plan could be parsed here if needed
       }
     })
 

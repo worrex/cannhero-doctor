@@ -4,29 +4,13 @@ import { useEffect, useState } from "react"
 import { Loader2, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getApprovedPrescriptions } from "@/actions/prescription-actions"
-import { PrescriptionList } from "@/components/prescriptions/prescription-list"
+import { PatientRequestCard } from "@/components/dashboard/patient-request-card" // Changed from PrescriptionList
+import type { PatientRequest } from "@/types/patient" // Import PatientRequest type
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
-
-// Define interface for prescription items
-interface Prescription {
-  id: any
-  patientId: any
-  doctorId: any
-  patientName: string
-  patientExternalId: any
-  age: number
-  requestDate: any
-  status: any
-  prescriptionPlan: any
-  prescriptionDate: any
-  totalAmount: any
-  notes: any
-  profileImage: string
-}
 
 export default function ApprovedPrescriptionsPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [prescriptions, setPrescriptions] = useState<PatientRequest[]>([]) // Use PatientRequest type
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [isPatientDetailOpen, setIsPatientDetailOpen] = useState(false)
   const { toast } = useToast()
@@ -37,7 +21,7 @@ export default function ApprovedPrescriptionsPage() {
         const result = await getApprovedPrescriptions()
         if (result.success) {
           // Set prescriptions data from API response or default to empty array if no data
-          setPrescriptions(result.data || [])
+          setPrescriptions(result.data as PatientRequest[] || []) // Cast to PatientRequest[]
         } else {
           toast({
             title: "Fehler",
@@ -92,8 +76,19 @@ export default function ApprovedPrescriptionsPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <PrescriptionList prescriptions={prescriptions} onPatientClick={handlePatientClick} />
+        <div className="space-y-4">
+          {prescriptions.map((prescription, index) => (
+            <PatientRequestCard
+              key={prescription.id}
+              request={prescription}
+              isEven={index % 2 === 0}
+              onPatientClick={handlePatientClick} // Connect to existing handler
+              // These actions are not typically used for already approved items
+              onApprove={() => {}} 
+              onDeny={() => {}}    
+              onRequestInfo={() => {}} 
+            />
+          ))}
         </div>
       )}
 
