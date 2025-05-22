@@ -5,6 +5,7 @@ import React, { useEffect, useState, useCallback } from "react" // Added React a
 import { getDeniedPrescriptions } from "@/actions/prescription-actions" // Import the action
 import { PatientRequestCard } from "@/components/dashboard/patient-request-card"
 import type { PatientRequest } from "@/types/patient" // Import PatientRequest type
+import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog" // Import dialog
 // You might need a different list component or adapt PatientRequestList for denied items
 
 // Define a type for the transformed request data, matching getDeniedPrescriptions output
@@ -34,6 +35,8 @@ export default function DeniedPrescriptionsPage() {
   const [deniedRequests, setDeniedRequests] = useState<DeniedRequest[]>([])
   const [displayableDeniedRequests, setDisplayableDeniedRequests] = useState<PatientRequest[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
+  const [isPatientDetailOpen, setIsPatientDetailOpen] = useState(false)
 
   const fetchDeniedRequests = useCallback(async () => {
     setIsLoading(true)
@@ -90,6 +93,11 @@ export default function DeniedPrescriptionsPage() {
       });
     setDisplayableDeniedRequests(transformedRequests);
   }, [deniedRequests]);
+
+  const handlePatientClick = (patientId: string) => {
+    setSelectedPatientId(patientId);
+    setIsPatientDetailOpen(true);
+  };
 
   if (isLoading) {
     return (
@@ -153,12 +161,18 @@ export default function DeniedPrescriptionsPage() {
                 onApprove={() => {}} // Not applicable for denied items
                 onDeny={() => {}}    // Not applicable for denied items
                 onRequestInfo={() => {}} // Not applicable or different handler
-                // onPatientClick={(patientId) => console.log("Patient clicked:", patientId)}
+                onPatientClick={handlePatientClick} // Connect to handler
               />
             ))}
           </div>
         </div>
       )}
+
+      <PatientDetailDialog
+        patientId={selectedPatientId}
+        isOpen={isPatientDetailOpen}
+        onClose={() => setIsPatientDetailOpen(false)}
+      />
     </div>
   )
 }

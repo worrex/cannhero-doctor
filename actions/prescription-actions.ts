@@ -368,12 +368,12 @@ export async function getPendingPrescriptions(): Promise<{ success: boolean; err
         medicationHistory: request.medication_history || "N/A",
         additionalNotes: request.additional_notes || "N/A",
         doctorNotes: request.doctor_notes || "",
-        totalAmount: request.total_amount || 0,
+        totalAmount: request.total_amount != null ? Number(request.total_amount) : undefined,
         profileImage: fullName === "N/A" || !fullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
         products: request.request_products?.map((prp: any) => ({
           id: prp.products.id,
           name: prp.products.name,
-          quantity: prp.quantity,
+          quantity: prp.quantity_grams, // Align with fetched field name
           unit: "g", // Hardcoded to grams
         })) || [],
       };
@@ -513,24 +513,24 @@ export async function getDeniedPrescriptions(): Promise<{ success: boolean; erro
           age = calculatedAge >= 0 ? calculatedAge : null;
         }
       }
-      
+
+      // Correctly placed doctor_id check
       if (request.doctor_id) {
-        const doctorData = doctorMap.get(request.doctor_id);
-        if (doctorData && doctorData.users) {
-          doctorName = `${doctorData.users.first_name || ""} ${doctorData.users.last_name || ""}`.trim() || "N/A";
-        } else {
-          doctorName = "N/A";
+        const doctor = doctorMap.get(request.doctor_id);
+        if (doctor && doctor.users) {
+          doctorName = `${doctor.users.first_name || ''} ${doctor.users.last_name || ''}`.trim();
         }
       }
 
-      const fullName = `${userResult.first_name || ""} ${userResult.last_name || ""}`.trim() || "N/A";
+      const patientFullName = `${userResult?.first_name || ''} ${userResult?.last_name || ''}`.trim() || "Unbekannter Patient";
+      // Removed duplicate fullName, using patientFullName instead
 
       return {
         id: request.id,
         external_id: request.external_id || request.id.substring(0, 8),
         patientId: request.patient_id || patientResult?.id || null,
-        userId: request.user_id || userResult?.id || null,
-        patientName: fullName,
+        // userId: request.user_id || userResult?.id || null, // Not directly part of PatientRequest, patientId is used
+        patientName: patientFullName,
         age: age,
         requestDate: request.created_at,
         deniedDate: request.updated_at, // Use updated_at as deniedDate
@@ -539,10 +539,10 @@ export async function getDeniedPrescriptions(): Promise<{ success: boolean; erro
         preferences: request.preferences || "N/A",
         medicationHistory: request.medication_history || "N/A",
         additionalNotes: request.additional_notes || "N/A",
-        doctorNotes: request.doctor_notes || "No reason provided.", // Denial reason
-        deniedBy: doctorName, // Doctor who denied
-        totalAmount: request.total_amount || 0,
-        profileImage: fullName === "N/A" || !fullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
+        doctorNotes: request.doctor_notes || "Kein Grund angegeben.", // Denial reason
+        deniedBy: doctorName || undefined, // Doctor who denied, ensure undefined if null
+        totalAmount: request.total_amount != null ? Number(request.total_amount) : undefined,
+        profileImage: patientFullName === "Unbekannter Patient" || !patientFullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(patientFullName)}`,
         products: request.request_products?.map((prp: any) => ({
           id: prp.products.id,
           name: prp.products.name,
@@ -685,7 +685,29 @@ export async function getApprovedPrescriptions() {
         medicalCondition: "N/A",
         preferences: "N/A",
         medicationHistory: "N/A",
-        products: [], // prescription.prescription_plan could be parsed here if needed
+        products: (() => {
+          // Define Product type inline or import if already defined elsewhere and accessible
+          type Product = { id: string; name: string; quantity?: number };
+          let productsData: Product[] = [];
+          if (prescription.prescription_plan) {
+            try {
+              const plan = typeof prescription.prescription_plan === 'string' 
+                            ? JSON.parse(prescription.prescription_plan) 
+                            : prescription.prescription_plan;
+              if (Array.isArray(plan)) {
+                productsData = plan.map((p_item: any) => ({
+                  id: p_item.productId || p_item.id || String(Date.now() + Math.random()), // Ensure unique ID if missing
+                  name: p_item.productName || p_item.name || "Unknown Product",
+                  quantity: p_item.quantity || undefined,
+                  // unit is not part of PatientRequest.Product, so omit
+                }));
+              }
+            } catch (e) {
+              console.error(`Failed to parse prescription_plan for prescription ${prescription.id}:`, e, "Plan content:", prescription.prescription_plan);
+            }
+          }
+          return productsData;
+        })(),
       }
     })
 

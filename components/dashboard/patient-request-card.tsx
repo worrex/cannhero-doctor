@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Image from "next/image"
 import { ChevronDown, ChevronUp, Clock, UserIcon } from "lucide-react"
 import { format } from "date-fns"
 
@@ -38,6 +37,7 @@ export function PatientRequestCard({
   onPatientClick,
 }: PatientRequestCardProps) {
   
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"approve" | "deny" | "info" | null>(null)
   const [doctorNotes, setDoctorNotes] = useState(request.doctorNotes || "")
 
@@ -80,7 +80,7 @@ export function PatientRequestCard({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "new":
-        return null; // Removed 'Neu' badge as per request
+        return null
       case "approved":
         return <Badge className="bg-green-500">Genehmigt</Badge>
       case "denied":
@@ -109,12 +109,17 @@ export function PatientRequestCard({
             <div className="flex-1">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2">
                 <div>
-                  <h3
-                    className="text-xl font-semibold text-gray-900 cursor-pointer hover:text-primary"
-                    onClick={handlePatientClick}
-                  >
-                    {request.patientName}
-                  </h3>
+                  <div className="flex items-center">
+                    <h3
+                      className="text-xl font-semibold text-gray-900 cursor-pointer hover:text-primary"
+                      onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} // Toggle on name click
+                    >
+                      {request.patientName}
+                    </h3>
+                    <Button variant="ghost" size="icon" onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="ml-2">
+                      {isDetailsExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                    </Button>
+                  </div>
                   <div className="flex flex-wrap items-center text-sm text-gray-500 mt-1">
                     <span className="mr-3">ID: {request.external_id}</span>
                     <span className="mr-3">Alter: {request.age !== null ? request.age : "N/A"}</span>
@@ -142,14 +147,55 @@ export function PatientRequestCard({
                 )}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                  {request.doctorNotes && (
-                    <div className="pt-4 border-t border-gray-200">
-                      <h4 className="text-sm font-medium text-gray-700">Arztnotizen</h4>
-                      <p className="text-sm text-gray-600 mt-1 whitespace-pre-line">{request.doctorNotes}</p>
+              {isDetailsExpanded && (
+                <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+                  <h4 className="text-md font-semibold text-gray-800 mb-2">Weitere Details</h4>
+                  {request.medicalCondition && request.medicalCondition !== "N/A" && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Medizinischer Zustand:</p>
+                      <p className="text-sm text-gray-600 whitespace-pre-line">{request.medicalCondition}</p>
                     </div>
                   )}
+                  {request.preferences && request.preferences !== "N/A" && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Präferenzen:</p>
+                      <p className="text-sm text-gray-600 whitespace-pre-line">{request.preferences}</p>
+                    </div>
+                  )}
+                  {request.medicationHistory && request.medicationHistory !== "N/A" && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Medikationshistorie:</p>
+                      <p className="text-sm text-gray-600 whitespace-pre-line">{request.medicationHistory}</p>
+                    </div>
+                  )}
+                  {request.status === "approved" && request.approvedBy && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Genehmigt von:</p>
+                      <p className="text-sm text-gray-600">{request.approvedBy}</p>
+                    </div>
+                  )}
+                  {request.status === "denied" && request.deniedBy && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Abgelehnt von:</p>
+                      <p className="text-sm text-gray-600">{request.deniedBy}</p>
+                    </div>
+                  )}
+                  {request.totalAmount != null && request.totalAmount > 0 && (
+                     <div>
+                       <p className="text-sm font-medium text-gray-700">Gesamtbetrag:</p>
+                       <p className="text-sm text-gray-600">{request.totalAmount.toFixed(2)} €</p>
+                     </div>
+                  )}
                 </div>
+              )}
+
+              {/* Existing Doctor Notes Section - can be moved inside isDetailsExpanded if preferred */}
+              {request.doctorNotes && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-700">Arztnotizen</h4>
+                  <p className="text-sm text-gray-600 mt-1 whitespace-pre-line">{request.doctorNotes}</p>
+                </div>
+              )}
 
             </div>
           </div>

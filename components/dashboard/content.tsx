@@ -177,9 +177,6 @@ export function DashboardContent() {
 
       <SearchAndFilter
         onSearch={handleSearch}
-        onFilter={handleFilter}
-        totalRequests={requests.length}
-        pendingRequests={pendingCount}
       />
 
       {filteredRequests.length === 0 ? (

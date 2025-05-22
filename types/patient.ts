@@ -13,6 +13,9 @@ export interface PatientRequest {
   profileImage?: string
   doctorNotes?: string
   products: Product[]
+  approvedBy?: string
+  deniedBy?: string
+  totalAmount?: number
 }
 
 export interface Product {

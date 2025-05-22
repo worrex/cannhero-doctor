@@ -10,7 +10,6 @@ import { useToast } from "@/hooks/use-toast"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
 import type { PatientRequest } from "@/types/patient"
 import { approvePrescription, denyPrescription, requestAdditionalInfo } from "@/actions/prescription-actions"
-import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { EmptyState } from "@/components/dashboard/empty-state"
 
 export default function OpenPrescriptionsPage() {
@@ -180,9 +179,6 @@ console.log("requests", requests)
 
       <SearchAndFilter
         onSearch={handleSearch}
-        onFilter={handleFilter}
-        totalRequests={totalCount}
-        pendingRequests={totalCount}
       />
 
       {totalCount === 0 ? (
