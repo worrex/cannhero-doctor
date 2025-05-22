@@ -57,14 +57,13 @@ export default function PatientsPage() {
         }
 
         // Transform the data
-        const transformedData = data.map((patient) => {
-          // Get first user from the users array (if it exists)
-          const user = Array.isArray(patient.users) && patient.users.length > 0 ? patient.users[0] : null
+        const transformedData = data.map((patient: any) => { // Added :any for patient to handle patient.users type implicitly
+          const relatedUser = patient.users; // Access the aliased 'users' object directly
           
           return {
             id: patient.id,
-            fullName: `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Unbekannt",
-            email: user?.email || "Keine E-Mail",
+            fullName: `${relatedUser?.first_name || ""} ${relatedUser?.last_name || ""}`.trim() || "Unbekannt",
+            email: relatedUser?.email || "Keine E-Mail",
             birthDate: patient.birth_date,
             createdAt: patient.created_at,
           }

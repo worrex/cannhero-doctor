@@ -10,29 +10,29 @@ import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog
 
 // Define a type for the transformed request data, matching getDeniedPrescriptions output
 interface DeniedRequest {
-  id: string;
-  external_id: string;
-  patientId: string | null;
-  userId: string | null;
-  patientName: string;
-  age: number | null;
-  requestDate: string;
-  deniedDate: string;
-  status: string;
-  medicalCondition: string;
-  preferences: string;
-  medicationHistory: string;
-  additionalNotes: string;
-  doctorNotes: string; // Denial reason
-  deniedBy: string | null; // Doctor who denied
-  totalAmount: number;
-  profileImage: string;
-  products: Array<{ id: string; name: string; quantity: number; unit: string }>;
+  id: string
+  external_id: string
+  patientId: string | null
+  userId: string | null
+  patientName: string
+  age: number | null
+  requestDate: string
+  deniedDate: string
+  status: string
+  medicalCondition: string
+  preferences: string
+  medicationHistory: string
+  additionalNotes: string
+  doctorNotes: string // Denial reason
+  deniedBy: string | null // Doctor who denied
+  totalAmount: number
+  profileImage: string
+  products: Array<{ id: string; name: string; quantity: number; unit: string }>
 }
 
 export default function DeniedPrescriptionsPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [deniedRequests, setDeniedRequests] = useState<DeniedRequest[]>([])
+  const [deniedprescriptionRequests, setDeniedPrescriptionRequests] = useState<DeniedRequest[]>([])
   const [displayableDeniedRequests, setDisplayableDeniedRequests] = useState<PatientRequest[]>([])
   const [error, setError] = useState<string | null>(null)
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
@@ -44,15 +44,15 @@ export default function DeniedPrescriptionsPage() {
     try {
       const result = await getDeniedPrescriptions()
       if (result.success) {
-        setDeniedRequests(result.data)
+        setDeniedPrescriptionRequests(result.data)
       } else {
         setError(result.error || "Failed to fetch denied prescriptions.")
-        setDeniedRequests([])
+        setDeniedPrescriptionRequests([])
       }
     } catch (err) {
       console.error("Error in fetchDeniedRequests:", err)
       setError(err instanceof Error ? err.message : "An unexpected error occurred.")
-      setDeniedRequests([])
+      setDeniedPrescriptionRequests([])
     } finally {
       setIsLoading(false)
     }
@@ -64,14 +64,14 @@ export default function DeniedPrescriptionsPage() {
 
   useEffect(() => {
     // Transform DeniedRequest data to PatientRequest data for display
-    const transformedRequests = deniedRequests
+    const transformedRequests = deniedprescriptionRequests
       .filter((req): req is DeniedRequest & { patientId: string } => req.patientId !== null)
       .map(req => {
         const transformedProducts = req.products.map(p => ({
           id: p.id,
           name: p.name,
           quantity: p.quantity,
-        }));
+        }))
 
         const patientRequestCompatible: PatientRequest = {
           id: req.id,
@@ -88,16 +88,16 @@ export default function DeniedPrescriptionsPage() {
           profileImage: req.profileImage || undefined,
           doctorNotes: req.doctorNotes || undefined,
           products: transformedProducts,
-        };
-        return patientRequestCompatible;
-      });
-    setDisplayableDeniedRequests(transformedRequests);
-  }, [deniedRequests]);
+        }
+        return patientRequestCompatible
+      })
+    setDisplayableDeniedRequests(transformedRequests)
+  }, [deniedprescriptionRequests])
 
   const handlePatientClick = (patientId: string) => {
-    setSelectedPatientId(patientId);
-    setIsPatientDetailOpen(true);
-  };
+    setSelectedPatientId(patientId)
+    setIsPatientDetailOpen(true)
+  }
 
   if (isLoading) {
     return (
@@ -167,7 +167,6 @@ export default function DeniedPrescriptionsPage() {
           </div>
         </div>
       )}
-
       <PatientDetailDialog
         patientId={selectedPatientId}
         isOpen={isPatientDetailOpen}
