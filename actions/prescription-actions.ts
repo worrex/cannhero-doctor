@@ -528,43 +528,12 @@ export async function approvePrescription(id: string, notes?: string) {
     const supabase = await createServerSupabaseClient();
     console.log("Approving prescription with ID:", id)
 
-    // First, check if this is a prescription (not a request) that we're trying to approve
-    const { data: prescriptionData, error: prescriptionError } = await supabase
-      .from("prescriptions")
-      .select("id, patient_id, doctor_id, status")
-      .eq("id", id)
 
-    if (prescriptionError) {
-      console.error("Error checking prescription:", prescriptionError)
-    }
-
-    // If we found a prescription with this ID, update it directly
-    if (prescriptionData && prescriptionData.length > 0) {
-      console.log("Found existing prescription, updating status")
-      const { error: updateError } = await supabase
-        .from("prescriptions")
-        .update({
-          status: "approved",
-          notes: notes || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-
-      if (updateError) {
-        console.error("Error updating prescription:", updateError)
-        return { success: false, error: updateError.message }
-      }
-
-      revalidatePath("/dashboard")
-      revalidatePath("/prescriptions/open")
-      revalidatePath("/prescriptions/approved")
-      return { success: true }
-    }
 
     // If not found in prescriptions, check prescription_requests
     const { data: requestDataArray, error: requestError } = await supabase
       .from("prescription_requests")
-      .select("id, patient_id, doctor_id")
+      .select("id, patient_id, doctor_id, request_products!inner(product_id, quantity_grams)")
       .eq("id", id)
 
     if (requestError) {
@@ -593,12 +562,26 @@ export async function approvePrescription(id: string, notes?: string) {
       return { success: false, error: "Authentication error: No user found." };
     }
 
-    // Update the prescription request status, assigning the current doctor
+    // Fetch the doctor's own ID from the 'doctors' table using the authenticated user's ID
+    const { data: doctorRecord, error: doctorError } = await supabase
+      .from("doctors")
+      .select("id")
+      .eq("user_id", currentUser.id)
+      .single();
+
+    if (doctorError || !doctorRecord) {
+      console.error("Error fetching doctor record or doctor not found for current user:", doctorError);
+      return { success: false, error: "Doctor profile not found for the current user. Ensure the doctor is registered in the 'doctors' table." };
+    }
+    const actual_doctor_id = doctorRecord.id;
+
+    // Temporarily comment out the update to prescription_requests
+    /*
     const { error: updateError } = await supabase
       .from("prescription_requests")
       .update({
         status: "approved",
-        doctor_id: currentUser.id, // Assign current doctor's ID
+        doctor_id: actual_doctor_id, 
         doctor_notes: notes || null,
         updated_at: new Date().toISOString(),
       })
@@ -608,32 +591,24 @@ export async function approvePrescription(id: string, notes?: string) {
       console.error("Error approving prescription request:", updateError)
       return { success: false, error: updateError.message }
     }
+    */
+    console.log("Temporarily skipped updating prescription_requests status.");
+
 
     // Create a new prescription record
-    const { error: createError } = await supabase.from("prescriptions").insert({
-      patient_id: requestData.patient_id,
-      doctor_id: currentUser.id, // Use current doctor's ID for the new prescription
-      status: "approved",
-      notes: notes || null,
-      prescription_date: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      has_agreed_agb: true, // Required field in the schema
-      has_agreed_privacy_policy: true // Required field in the schema
-    })
-
-    if (createError) {
-      console.error("Error creating prescription:", createError)
-      // Rollback the update if creating the prescription fails
-      await supabase
-        .from("prescription_requests")
-        .update({ status: "new", updated_at: new Date().toISOString() })
-        .eq("id", id)
-      return { success: false, error: createError.message }
-    }
-
-    console.log("Successfully approved prescription request and created prescription")
-
+    const { data: newPrescription, error: createError } = await supabase
+      .from("prescriptions")
+      .insert({
+        patient_id: requestData.patient_id,
+        doctor_id: actual_doctor_id, // Use the ID from the 'doctors' table
+        status: "approved",
+        notes: notes || null,
+        prescription_date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        has_agreed_agb: true,
+        has_agreed_privacy_policy: true
+      })
     revalidatePath("/dashboard")
     revalidatePath("/prescriptions/open")
     revalidatePath("/prescriptions/approved")
