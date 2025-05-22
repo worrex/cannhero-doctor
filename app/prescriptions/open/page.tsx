@@ -191,7 +191,7 @@ console.log("requests", requests)
         <div className="space-y-8">
           {filteredRequests.length > 0 && (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Neue Anfragen</h2>
+              <h2 className="text-xl font-semibold mb-4">Ausstehende Rezepte</h2>
               <PatientRequestList
                 requests={filteredRequests}
                 onApprove={handleApprove}
@@ -199,13 +199,6 @@ console.log("requests", requests)
                 onRequestInfo={handleRequestInfo}
                 onPatientClick={handlePatientClick}
               />
-            </div>
-          )}
-
-          {filteredPrescriptions.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Ausstehende Rezepte</h2>
-              <PrescriptionList prescriptions={filteredPrescriptions} onPatientClick={handlePatientClick} />
             </div>
           )}
         </div>

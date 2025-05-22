@@ -575,13 +575,12 @@ export async function approvePrescription(id: string, notes?: string) {
     }
     const actual_doctor_id = doctorRecord.id;
 
-    // Temporarily comment out the update to prescription_requests
-    /*
+    // Update the prescription request status, assigning the current doctor
     const { error: updateError } = await supabase
       .from("prescription_requests")
       .update({
         status: "approved",
-        doctor_id: actual_doctor_id, 
+        doctor_id: actual_doctor_id, // Use the ID from the 'doctors' table
         doctor_notes: notes || null,
         updated_at: new Date().toISOString(),
       })
@@ -591,8 +590,6 @@ export async function approvePrescription(id: string, notes?: string) {
       console.error("Error approving prescription request:", updateError)
       return { success: false, error: updateError.message }
     }
-    */
-    console.log("Temporarily skipped updating prescription_requests status.");
 
 
     // Create a new prescription record
@@ -609,10 +606,55 @@ export async function approvePrescription(id: string, notes?: string) {
         has_agreed_agb: true,
         has_agreed_privacy_policy: true
       })
+      .select('id') // Reinstate .select('id')
+      .single();    // Reinstate .single()
+
+    if (createError || !newPrescription) { // Reinstate error handling block
+      console.error("Error creating prescription:", createError);
+      // Rollback the update if creating the prescription fails
+      await supabase
+        .from("prescription_requests")
+        .update({ status: "new", doctor_id: null, doctor_notes: null, updated_at: new Date().toISOString() }) // Revert doctor_id as well
+        .eq("id", id);
+      return { success: false, error: createError?.message || "Failed to create prescription record." };
+    }
+
+    console.log("Successfully created prescription record with ID:", newPrescription.id);
+
+    // Temporarily comment out prescription_products insertion
+    /*
+    if (requestData.request_products && requestData.request_products.length > 0) {
+      const productsToInsert = requestData.request_products.map(product => ({
+        prescription_id: newPrescription.id,
+        product_id: product.product_id,
+        quantity_grams: product.quantity_grams,
+      }));
+
+      const { error: productsError } = await supabase
+        .from("prescription_products")
+        .insert(productsToInsert);
+
+      if (productsError) {
+        console.error("Error inserting prescription products:", productsError);
+        // Attempt to rollback the prescription creation and request update
+        await supabase.from("prescriptions").delete().eq("id", newPrescription.id);
+        await supabase
+          .from("prescription_requests")
+          .update({ status: "new", doctor_id: null, doctor_notes: null, updated_at: new Date().toISOString() })
+          .eq("id", id);
+        return { success: false, error: "Failed to insert prescription products. The approval has been rolled back." };
+      }
+      console.log("Successfully inserted prescription products.");
+    }
+    */
+    console.log("Temporarily skipped inserting prescription_products.");
+
+
     revalidatePath("/dashboard")
     revalidatePath("/prescriptions/open")
     revalidatePath("/prescriptions/approved")
-    return { success: true }
+
+    return { success: true, data: { prescriptionId: newPrescription.id } }; // Added data to return
   } catch (error) {
     console.error("Error in approvePrescription:", error)
     return { success: false, error: error instanceof Error ? error.message : "Database error" }
