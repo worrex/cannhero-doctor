@@ -3,7 +3,7 @@ export interface PatientRequest {
   external_id: string
   patientId: string
   patientName: string
-  age: number
+  age: number | null
   requestDate: string
   status: "new" | "approved" | "denied" | "info_requested"
   medicalCondition: string
@@ -12,6 +12,14 @@ export interface PatientRequest {
   additionalNotes?: string
   profileImage?: string
   doctorNotes?: string
+  products: Product[]
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  quantity?: number; // Or other relevant fields like dosage, etc.
+  // Add other product-specific fields as needed
 }
 
 export interface Patient {

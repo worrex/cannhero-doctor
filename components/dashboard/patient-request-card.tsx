@@ -37,7 +37,7 @@ export function PatientRequestCard({
   onRequestInfo,
   onPatientClick,
 }: PatientRequestCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  
   const [confirmAction, setConfirmAction] = useState<"approve" | "deny" | "info" | null>(null)
   const [doctorNotes, setDoctorNotes] = useState(request.doctorNotes || "")
 
@@ -80,7 +80,7 @@ export function PatientRequestCard({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "new":
-        return <Badge className="bg-blue-500">Neu</Badge>
+        return null; // Removed 'Neu' badge as per request
       case "approved":
         return <Badge className="bg-green-500">Genehmigt</Badge>
       case "denied":
@@ -115,10 +115,10 @@ export function PatientRequestCard({
                   >
                     {request.patientName}
                   </h3>
-                  <div className="flex items-center text-sm text-gray-500 mt-1">
+                  <div className="flex flex-wrap items-center text-sm text-gray-500 mt-1">
                     <span className="mr-3">ID: {request.external_id}</span>
-                    <span className="mr-3">Alter: {request.age}</span>
-                    {getStatusBadge(request.status)}
+                    <span className="mr-3">Alter: {request.age !== null ? request.age : "N/A"}</span>
+                    {request.status !== "new" && <span className="mr-3">{getStatusBadge(request.status)}</span>}
                   </div>
                 </div>
                 <div className="flex items-center mt-2 sm:mt-0 text-sm text-gray-500">
@@ -127,81 +127,52 @@ export function PatientRequestCard({
                 </div>
               </div>
 
-              <div className="mt-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700">Medizinischer Zustand</h4>
-                    <p className="text-sm text-gray-600 mt-1">{request.medicalCondition}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700">Präferenzen</h4>
-                    <p className="text-sm text-gray-600 mt-1">{request.preferences}</p>
-                  </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-1">Angefragte Produkte</h4>
+                {request.products && request.products.length > 0 ? (
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 mb-3">
+                    {request.products.map((product) => (
+                      <li key={product.id}>
+                        {product.name}{product.quantity ? ` (Menge: ${product.quantity})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500 mb-3">Keine Produkte angefragt.</p>
+                )}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                  {request.doctorNotes && (
+                    <div className="pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700">Arztnotizen</h4>
+                      <p className="text-sm text-gray-600 mt-1 whitespace-pre-line">{request.doctorNotes}</p>
+                    </div>
+                  )}
                 </div>
 
-                {expanded && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-700">Medikamentenhistorie</h4>
-                        <p className="text-sm text-gray-600 mt-1">{request.medicationHistory}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-700">Zusätzliche Notizen</h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {request.additionalNotes || "Keine zusätzlichen Notizen vorhanden."}
-                        </p>
-                      </div>
-                    </div>
-
-                    {request.doctorNotes && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <h4 className="text-sm font-medium text-gray-700">Arztnotizen</h4>
-                        <p className="text-sm text-gray-600 mt-1">{request.doctorNotes}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  className="mt-4 text-primary text-sm font-medium flex items-center hover:underline focus:outline-none"
-                  onClick={() => setExpanded(!expanded)}
-                >
-                  {expanded ? (
-                    <>
-                      <ChevronUp className="h-4 w-4 mr-1" />
-                      Weniger anzeigen
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-4 w-4 mr-1" />
-                      Mehr anzeigen
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
           </div>
         </div>
 
         {request.status === "new" && (
-          <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-wrap gap-3">
-            <Button className="bg-primary hover:bg-primary-600 text-white" onClick={handleApprove}>
+          <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-col md:flex-row md:flex-wrap gap-3">
+            <Button className="w-full md:w-auto bg-primary hover:bg-primary-600 text-white" onClick={handleApprove}>
               Genehmigen
             </Button>
-            <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={handleDeny}>
+            <Button variant="outline" className="w-full md:w-auto border-red-300 text-red-600 hover:bg-red-50" onClick={handleDeny}>
               Ablehnen
             </Button>
             <Button
               variant="outline"
-              className="border-secondary-300 text-gray-700 hover:bg-secondary-50"
+              className="w-full md:w-auto border-secondary-300 text-gray-700 hover:bg-secondary-50"
               onClick={handleRequestInfo}
             >
               Weitere Informationen anfordern
             </Button>
             <Button
               variant="outline"
-              className="border-blue-300 text-blue-600 hover:bg-blue-50 ml-auto"
+              className="w-full md:w-auto border-blue-300 text-blue-600 hover:bg-blue-50"
               onClick={handlePatientClick}
             >
               Patientendetails
@@ -210,33 +181,28 @@ export function PatientRequestCard({
         )}
       </div>
 
-      <AlertDialog open={confirmAction !== null} onOpenChange={() => setConfirmAction(null)}>
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction === "approve"
-                ? "Rezept genehmigen"
-                : confirmAction === "deny"
-                  ? "Rezept ablehnen"
-                  : "Weitere Informationen anfordern"}
+              {confirmAction === "approve" ? "Rezept genehmigen" : 
+               confirmAction === "deny" ? "Rezept ablehnen" : 
+               confirmAction === "info" ? "Weitere Informationen anfordern" : ""}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmAction === "approve"
-                ? "Sind Sie sicher, dass Sie diese Rezeptanfrage genehmigen möchten? Der Patient wird über Ihre Entscheidung informiert."
-                : confirmAction === "deny"
-                  ? "Sind Sie sicher, dass Sie diese Rezeptanfrage ablehnen möchten? Der Patient wird über Ihre Entscheidung informiert."
-                  : "Bitte geben Sie an, welche zusätzlichen Informationen Sie vom Patienten benötigen."}
+              {confirmAction === "approve" ? "Sind Sie sicher, dass Sie diese Rezeptanfrage genehmigen möchten? Der Patient wird über Ihre Entscheidung informiert." : 
+               confirmAction === "deny" ? "Sind Sie sicher, dass Sie diese Rezeptanfrage ablehnen möchten? Der Patient wird über Ihre Entscheidung informiert." : 
+               confirmAction === "info" ? "Bitte geben Sie an, welche zusätzlichen Informationen Sie vom Patienten benötigen." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="my-4">
             <Textarea
-              placeholder="Notizen für den Patienten (optional)"
+              placeholder={confirmAction === "info" ? "Notizen für den Patienten (erforderlich)" : "Notizen für den Patienten (optional)"}
               value={doctorNotes}
               onChange={(e) => setDoctorNotes(e.target.value)}
               className="w-full"
               rows={4}
-              required={confirmAction === "info"}
             />
             {confirmAction === "info" && !doctorNotes.trim() && (
               <p className="text-sm text-red-500 mt-1">Bitte geben Sie an, welche Informationen Sie benötigen.</p>
@@ -247,16 +213,12 @@ export function PatientRequestCard({
             <AlertDialogCancel onClick={handleCancel}>Abbrechen</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
-              className={
-                confirmAction === "approve"
-                  ? "bg-primary hover:bg-primary-600"
-                  : confirmAction === "deny"
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-blue-600 hover:bg-blue-700"
-              }
+              className={`text-white ${confirmAction === "approve" ? "bg-primary hover:bg-primary-600" : confirmAction === "deny" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}
               disabled={confirmAction === "info" && !doctorNotes.trim()}
             >
-              {confirmAction === "approve" ? "Genehmigen" : confirmAction === "deny" ? "Ablehnen" : "Anfragen"}
+              {confirmAction === "approve" ? "Genehmigen" : 
+               confirmAction === "deny" ? "Ablehnen" : 
+               confirmAction === "info" ? "Anfragen" : "Bestätigen"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
