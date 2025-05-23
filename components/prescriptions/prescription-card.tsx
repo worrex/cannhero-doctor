@@ -1,6 +1,7 @@
 "use client"
 
-import type React from "react"
+import type React from "react";
+import { type Prescription } from "@/types/prescription";
 
 import { useState } from "react"
 import { format } from "date-fns"
@@ -20,21 +21,6 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { approvePrescription, denyPrescription } from "@/actions/prescription-actions"
-
-interface Prescription {
-  id: string
-  patientId: string
-  patientName: string
-  patientExternalId: string
-  age: number
-  requestDate: string
-  status: string
-  prescriptionPlan: string | null
-  prescriptionDate: string | null
-  totalAmount: number | null
-  notes: string | null
-  profileImage: string
-}
 
 interface PrescriptionCardProps {
   prescription: Prescription
@@ -59,10 +45,10 @@ export function PrescriptionCard({ prescription, isEven, onPatientClick }: Presc
   }
 
   const handlePatientClick = () => {
-    if (onPatientClick) {
-      onPatientClick(prescription.patientId)
+    if (onPatientClick && prescription.patientId) {
+      onPatientClick(prescription.patientId);
     }
-  }
+  };
 
   const handleConfirm = async () => {
     setIsSubmitting(true)

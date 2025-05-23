@@ -53,7 +53,7 @@ function _transformItemToPatientRequestView(
     patientName: patientFullName,
     age: age,
     requestDate: rawItem.created_at,
-    status: rawItem.status,
+    status: rawItem.status as PatientRequestType['status'],
     totalAmount: rawItem.total_amount != null ? Number(rawItem.total_amount) : undefined,
     profileImage: patientFullName === "Unbekannter Patient" || !patientFullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(patientFullName)}`,
     medicalCondition: rawItem.medical_condition || "N/A",

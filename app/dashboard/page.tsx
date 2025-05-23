@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { useRouter } from "next/navigation"
+import { useRouter } from "next/navigation";
+import { type PatientRequest as PatientRequestType } from "@/types/patient";
+import { type Prescription } from "@/types/prescription";
 import { Loader2, FileText, AlertTriangle, Users, CheckCircle, Clock } from "lucide-react"
 import { getPendingPrescriptions, getApprovedPrescriptions } from "@/actions/prescription-actions"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
@@ -11,26 +13,11 @@ import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/client"
 
-interface Prescription {
-  id: string
-  patientId: string
-  patientName: string
-  patientExternalId: string
-  age: number
-  requestDate: string
-  status: string
-  prescriptionPlan: string | null
-  prescriptionDate: string | null
-  totalAmount: number | null
-  notes: string | null
-  profileImage: string
-}
-
 export default function DashboardPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]) // Use imported Prescription interface
   const [isLoadingPrescriptions, setIsLoadingPrescriptions] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasShownError, setHasShownError] = useState(false)
@@ -62,8 +49,24 @@ export default function DashboardPage() {
             setHasShownError(true)
           }
         } else {
-          // Set pending prescriptions
-          setPrescriptions(pendingResult.data || []);
+          // Transform and set pending prescriptions
+          const transformedPendingPrescriptions: Prescription[] = (pendingResult.data || []).map(
+            (pr: PatientRequestType): Prescription => ({
+              id: pr.id,
+              patientId: pr.patientId,
+              patientName: pr.patientName,
+              patientExternalId: pr.external_id,
+              age: pr.age,
+              requestDate: pr.requestDate,
+              status: pr.status,
+              prescriptionPlan: null, // Pending requests don't have a finalized plan string yet
+              prescriptionDate: null, // Pending requests don't have a prescription date yet
+              totalAmount: pr.totalAmount ?? null, // Handle undefined from PatientRequest
+              notes: pr.additionalNotes ?? null, // Use additionalNotes from patient for general notes
+              profileImage: pr.profileImage || '/user-icon.svg', // Fallback if not provided
+            })
+          );
+          setPrescriptions(transformedPendingPrescriptions);
         }
 
         // Set the approved count

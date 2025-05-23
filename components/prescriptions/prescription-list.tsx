@@ -1,24 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { PrescriptionCard } from "@/components/prescriptions/prescription-card"
+import { PrescriptionCard } from "@/components/prescriptions/prescription-card";
+import { Prescription } from "@/types/prescription";
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
-
-interface Prescription {
-  id: string
-  patientId: string
-  patientName: string
-  patientExternalId: string
-  age: number
-  requestDate: string
-  status: string
-  prescriptionPlan: string | null
-  prescriptionDate: string | null
-  totalAmount: number | null
-  notes: string | null
-  profileImage: string
-}
 
 interface PrescriptionListProps {
   prescriptions: Prescription[]

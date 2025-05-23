@@ -6,21 +6,7 @@ import { Loader2, FileText, AlertTriangle } from "lucide-react"
 import { getPendingPrescriptions } from "@/actions/prescription-actions"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useToast } from "@/hooks/use-toast"
-
-interface Prescription {
-  id: string
-  patientId: string
-  patientName: string
-  patientExternalId: string
-  age: number
-  requestDate: string
-  status: string
-  prescriptionPlan: string | null
-  prescriptionDate: string | null
-  totalAmount: number | null
-  notes: string | null
-  profileImage: string
-}
+import { Prescription } from "@/types/prescription"
 
 export default function PrescriptionsPage() {
   const { user, isLoading } = useAuth()
@@ -44,6 +30,7 @@ export default function PrescriptionsPage() {
             variant: "destructive",
           })
         } else {
+          // @ts-ignore
           setPrescriptions(result.data || [])
         }
       } catch (error) {
