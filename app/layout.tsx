@@ -9,7 +9,7 @@ import { Layout } from "@/components/layout"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Absolem420 | Arztportal für medizinische Cannabis-Verschreibungen",
+  title: "CannHero | Arztportal für medizinische Cannabis-Verschreibungen",
   description:
     "Ein sicheres Portal für Ärzte zur Überprüfung und Bearbeitung von Patientenanfragen für medizinische Cannabis-Verschreibungen.",
 }

@@ -92,14 +92,6 @@ export function DashboardHeader() {
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center">
-          <Link href="/dashboard" className="flex items-center">
-            <div className="relative h-10 w-40 mr-2">
-              <Image src="/absolem420-logo.svg" alt="Absolem420 Logo" fill className="object-contain" />
-            </div>
-          </Link>
-        </div>
-
         <div className="flex items-center space-x-4">
           <Button variant="ghost" size="icon" className="relative" onClick={() => setNotifications(0)}>
             <Bell className="h-5 w-5 text-gray-600" />
