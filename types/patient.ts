@@ -1,21 +1,23 @@
 export interface PatientRequest {
-  id: string
-  external_id: string
-  patientId: string
-  patientName: string
-  age: number | null
-  requestDate: string
-  status: "new" | "approved" | "denied" | "info_requested"
-  medicalCondition: string
-  preferences: string
-  medicationHistory: string
-  additionalNotes?: string
-  profileImage?: string
-  doctorNotes?: string
-  products: Product[]
-  approvedBy?: string
-  deniedBy?: string
-  totalAmount?: number
+  id: string;
+  external_id: string;
+  patientId: string | null;
+  userId: string | null; // Added to align with DeniedRequest and provide direct user ID access
+  patientName: string;
+  age: number | null;
+  requestDate: string; // Could be creation date of request or prescription
+  status: "new" | "approved" | "denied" | "info_requested";
+  medicalCondition?: string;
+  preferences?: string;
+  medicationHistory?: string;
+  additionalNotes?: string;
+  doctorNotes?: string; // General notes, or denial reason, or approval notes
+  approvedBy?: string; // Doctor who approved
+  deniedBy?: string;   // Doctor who denied
+  deniedDate: string | null; // Date of denial
+  totalAmount?: number;
+  profileImage?: string;
+  products: Product[];
 }
 
 export interface Product {

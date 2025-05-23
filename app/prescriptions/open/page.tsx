@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Loader2, Clock } from "lucide-react"
-import { getPrescriptionRequests, getPendingPrescriptions } from "@/actions/prescription-actions"
+import { getPendingPrescriptions } from "@/actions/prescription-actions"
 import { PatientRequestList } from "@/components/dashboard/patient-request-list"
 import { SearchAndFilter } from "@/components/dashboard/search-and-filter"
 import { useToast } from "@/hooks/use-toast"
@@ -28,18 +28,17 @@ console.log("requests", requests)
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch both prescription requests and pending prescriptions
-        const [requestsData, pendingResult] = await Promise.all([getPrescriptionRequests(), getPendingPrescriptions()])
-
-        // Filter only new requests
-        setRequests(requestsData.filter((request) => request.status === "new"))
-
-        console.log("requestsData", requestsData,pendingResult)
+        // Fetch pending prescriptions
+        const pendingResult = await getPendingPrescriptions();
 
         if (pendingResult.success) {
-          setPendingPrescriptions(pendingResult.data || [])
+          // Filter only new requests if necessary, or use directly if getPendingPrescriptions already provides the correct subset
+          setRequests((pendingResult.data || []).filter(request => request.status === "new"));
+          // setPendingPrescriptions(pendingResult.data || []); // This line might be redundant if 'requests' is the primary state for this page
         } else {
-          console.error("Error fetching pending prescriptions:", pendingResult.error)
+          console.error("Error fetching pending prescriptions:", pendingResult.error);
+          // Set requests to empty array or handle error appropriately
+          setRequests([]); 
         }
       } catch (error) {
         console.error("Error fetching data:", error)

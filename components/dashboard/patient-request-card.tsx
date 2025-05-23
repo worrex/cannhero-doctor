@@ -54,10 +54,10 @@ export function PatientRequestCard({
   }
 
   const handlePatientClick = () => {
-    if (onPatientClick) {
-      onPatientClick(request.patientId)
+    if (onPatientClick && request.patientId) {
+      onPatientClick(request.patientId);
     }
-  }
+  };
 
   const handleConfirm = () => {
     if (confirmAction === "approve") {

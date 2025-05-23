@@ -2,32 +2,31 @@
 
 import { Loader2, XCircle } from "lucide-react"
 import React, { useEffect, useState, useCallback } from "react" // Added React and useCallback
-import { getDeniedPrescriptions } from "@/actions/prescription-actions" // Import the action
-import { PatientRequestCard } from "@/components/dashboard/patient-request-card"
-import type { PatientRequest } from "@/types/patient" // Import PatientRequest type
-import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog" // Import dialog
-// You might need a different list component or adapt PatientRequestList for denied items
+import { getDeniedPrescriptions } from "@/actions/prescription-actions";
+import { PatientRequestCard } from "@/components/dashboard/patient-request-card";
+import type { PatientRequest, Product } from "@/types/patient"; // Combined imports
+import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog";
 
 // Define a type for the transformed request data, matching getDeniedPrescriptions output
 interface DeniedRequest {
-  id: string
-  external_id: string
-  patientId: string | null
-  userId: string | null
-  patientName: string
-  age: number | null
-  requestDate: string
-  deniedDate: string
-  status: string
-  medicalCondition: string
-  preferences: string
-  medicationHistory: string
-  additionalNotes: string
-  doctorNotes: string // Denial reason
-  deniedBy: string | null // Doctor who denied
-  totalAmount: number
-  profileImage: string
-  products: Array<{ id: string; name: string; quantity: number; unit: string }>
+  id: string;
+  external_id: string;
+  patientId: string | null;
+  userId: string | null;
+  patientName: string;
+  age: number | null;
+  requestDate: string;
+  deniedDate: string | null;
+  status: string; // Should match PatientRequest status values if possible, e.g., "denied"
+  medicalCondition?: string; // Aligned with PatientRequest (optional)
+  preferences?: string; // Aligned with PatientRequest (optional)
+  medicationHistory?: string; // Aligned with PatientRequest (optional)
+  additionalNotes?: string; // Aligned with PatientRequest (optional)
+  doctorNotes?: string; // Denial reason, aligned with PatientRequest (optional)
+  deniedBy?: string | null; // Doctor who denied, aligned with PatientRequest (optional for deniedBy)
+  totalAmount?: number; // Aligned with PatientRequest (optional)
+  profileImage?: string; // Aligned with PatientRequest (optional)
+  products: Product[]; // Aligned with PatientRequest
 }
 
 export default function DeniedPrescriptionsPage() {
@@ -87,6 +86,8 @@ export default function DeniedPrescriptionsPage() {
           additionalNotes: req.additionalNotes || undefined,
           profileImage: req.profileImage || undefined,
           doctorNotes: req.doctorNotes || undefined,
+          userId: req.userId, // Added missing userId
+          deniedDate: req.deniedDate, // Added missing deniedDate
           products: transformedProducts,
         }
         return patientRequestCompatible

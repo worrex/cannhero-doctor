@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Loader2, FileText, AlertTriangle, Users, CheckCircle, Clock } from "lucide-react"
-import { getPendingPrescriptions, getApprovedPrescriptions, getPrescriptionRequests } from "@/actions/prescription-actions"
+import { getPendingPrescriptions, getApprovedPrescriptions } from "@/actions/prescription-actions"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useToast } from "@/hooks/use-toast"
 import { PatientDetailDialog } from "@/components/patients/patient-detail-dialog"
@@ -44,29 +44,12 @@ export default function DashboardPage() {
       if (!user) return
 
       try {
-        // Fetch prescriptions, approved prescriptions, patient count, and prescription requests
-        const [pendingResult, approvedResult, patientResult, prescriptionRequests] = await Promise.all([
+        // Fetch prescriptions, approved prescriptions, patient count
+        const [pendingResult, approvedResult, patientResult] = await Promise.all([
           getPendingPrescriptions(),
           getApprovedPrescriptions(),
-          fetchPatientCount(),
-          getPrescriptionRequests(),
-        ])
-
-        // Transform prescriptionRequests to match the Prescription interface
-        const transformedRequests = prescriptionRequests.map(request => ({
-          id: request.id,
-          patientId: request.patientId || '',
-          patientName: request.patientName,
-          patientExternalId: request.external_id,
-          age: request.age,
-          requestDate: request.requestDate,
-          status: request.status,
-          prescriptionPlan: null,
-          prescriptionDate: null,
-          totalAmount: request.totalAmount,
-          notes: request.medicalCondition,
-          profileImage: request.profileImage
-        }));
+          fetchPatientCount()
+        ]);
 
         if (pendingResult.error) {
           setError(pendingResult.error)
@@ -79,8 +62,8 @@ export default function DashboardPage() {
             setHasShownError(true)
           }
         } else {
-          // Combine pending prescriptions with prescription requests
-          setPrescriptions([...transformedRequests, ...(pendingResult.data || [])])
+          // Set pending prescriptions
+          setPrescriptions(pendingResult.data || []);
         }
 
         // Set the approved count

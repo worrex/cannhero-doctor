@@ -1,568 +1,129 @@
-"use server"
+"use server";
 
-import { revalidatePath } from "next/cache"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { revalidatePath } from "next/cache";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { PatientRequest as PatientRequestType, Product as ProductType } from "@/types/patient";
 
-export async function getPrescriptionRequests() {
-  try {
-    const supabase = await createServerSupabaseClient();
+// Utility function to transform raw data to PatientRequestType view model
+function _transformItemToPatientRequestView(
+  rawItem: any, // Can be from 'prescription_requests' or 'prescriptions'
+  type: 'pending' | 'denied' | 'approved',
+  patientMap: Map<string, any>,
+  userMap: Map<string, any>,
+  doctorNameMap: Map<string, string> // Maps doctor_id to doctor's full name for approvedBy/deniedBy lines
+): Partial<PatientRequestType> { 
+  // 1. Resolve patient and user details
+  let userResult: any = { id: '', first_name: null, last_name: null, email: '' };
+  let patientResult: any = { id: '', user_id: null, birth_date: null };
+  let age: number | null = null;
 
-    const { data, error } = await supabase
-      .from("prescription_requests")
-      .select(`
-        id,
-        external_id,
-        status,
-        medical_condition,
-        preferences,
-        medication_history,
-        additional_notes,
-        doctor_notes,
-        created_at,
-        patient_id,
-        user_id,
-        total_amount
-      `)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("Error fetching prescription requests:", error)
-      return []
+  if (rawItem.patient_id) {
+    patientResult = patientMap.get(rawItem.patient_id) || { id: rawItem.patient_id, user_id: rawItem.user_id, birth_date: null };
+    if (patientResult && patientResult.user_id) {
+      userResult = userMap.get(patientResult.user_id) || { id: patientResult.user_id };
     }
-
-    if (data.length === 0) {
-      return [];
-    }
-    
-    // Collect user IDs either from patient relationships or direct user_id
-    const directUserIds = data
-      .filter(request => request.user_id)
-      .map(request => request.user_id);
-      
-    // We need to get user information separately because of the schema structure
-    const patientIds = data
-      .filter(request => request.patient_id)
-      .map(request => request.patient_id);
-    
-    // Define types for better type safety
-    type User = {
-      id: string;
-      first_name: string | null;
-      last_name: string | null;
-      email: string;
-    };
-
-    type Patient = {
-      id: string;
-      user_id: string;
-      birth_date: string | null;
-    };
-
-    // Get patient data if we have patient IDs
-    let patientsWithUsers: Patient[] = [];
-    if (patientIds.length > 0) {
-      const { data: patientsData, error: userError } = await supabase
-        .from("patients")
-        .select(`
-          id,
-          birth_date,
-          user_id
-        `)
-        .in('id', patientIds);
-  
-      if (userError) {
-        console.error("Error fetching patient users:", userError);
-      } else {
-        patientsWithUsers = patientsData;
-      }
-    }
-
-    // Get user info for both direct user IDs and patient-related user IDs
-    const patientUserIds = patientsWithUsers.map(patient => patient.user_id);
-    const allUserIds = [...new Set([...directUserIds, ...patientUserIds])];
-    
-    let users: User[] = [];
-    if (allUserIds.length > 0) {
-      const { data: usersData, error: usersError } = await supabase
-        .from("users")
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email
-        `)
-        .in('id', allUserIds);
-  
-      if (usersError) {
-        console.error("Error fetching users:", usersError);
-      } else {
-        users = usersData;
-        console.log(`Found ${users.length} users in database`);
-      }
-    }
-
-    // Create lookup maps for faster access
-    const userMap = new Map(users.map(u => [u.id, u]));
-    const patientMap = new Map(patientsWithUsers.map(p => [p.id, p]));
-
-    // Pre-query all missing users and patients to avoid async issues in map
-    // First identify any missing users or patients that need to be looked up
-    const missingUserIds = [];
-    const missingPatientIds = [];
-    
-    for (const request of data) {
-      if (request.user_id && !userMap.has(request.user_id)) {
-        missingUserIds.push(request.user_id);
-      }
-      
-      if (request.patient_id && !patientMap.has(request.patient_id)) {
-        missingPatientIds.push(request.patient_id);
-      }
-    }
-    
-    // Look up missing patients first
-    if (missingPatientIds.length > 0) {
-      console.log(`Looking up ${missingPatientIds.length} missing patients`);
-      const { data: missingPatients } = await supabase
-        .from("patients")
-        .select("id, user_id, birth_date")
-        .in("id", missingPatientIds);
-        
-      if (missingPatients) {
-        for (const patient of missingPatients) {
-          patientMap.set(patient.id, patient);
-          
-          // Add any new user IDs to our missing list
-          if (patient.user_id && !userMap.has(patient.user_id)) {
-            missingUserIds.push(patient.user_id);
-          }
-        }
-      }
-    }
-    
-    // Now look up any missing users
-    if (missingUserIds.length > 0) {
-      console.log(`Looking up ${missingUserIds.length} missing users`);
-      const { data: missingUsers } = await supabase
-        .from("users")
-        .select("id, first_name, last_name, email")
-        .in("id", missingUserIds);
-        
-      if (missingUsers) {
-        for (const user of missingUsers) {
-          userMap.set(user.id, user);
-        }
-      }
-    }
-
-    // Transform the data to match the expected format
-    const transformedData = data.map((request: any) => {
-      let user;
-      let patient: Patient | { id: string; user_id: string | null; birth_date: string | null; } | undefined;
-      let age: number | null = null; // MODIFIED: Initialize age to null and type it
-      
-      // Determine user and patient objects
-      if (request.user_id) {
-        user = userMap.get(request.user_id) as User | undefined;
-        const foundPatient = Array.from(patientMap.values()).find(p => p.user_id === request.user_id);
-        if (foundPatient) {
-            patient = foundPatient;
-        } else {
-            patient = { id: '', user_id: request.user_id, birth_date: null };
-        }
-        user = user || { id: request.user_id, first_name: null, last_name: null, email: '' };
-
-      } else if (request.patient_id) {
-        patient = patientMap.get(request.patient_id) as Patient | undefined;
-        if (patient?.user_id) {
-          user = userMap.get(patient.user_id) as User | undefined;
-        }
-        user = user || { id: patient?.user_id || '', first_name: null, last_name: null, email: '' };
-        patient = patient || { id: request.patient_id, user_id: null, birth_date: null };
-
-      } else {
-        user = { id: '', first_name: null, last_name: null, email: '' };
-        patient = { id: '', user_id: null, birth_date: null };
-      }
-      
-      user = user || { id: '', first_name: null, last_name: null, email: '' };
-      patient = patient || { id: '', user_id: null, birth_date: null };
-
-      // MOVED AND MODIFIED: Calculate age if patient.birth_date is available
-      if (patient.birth_date) {
-        const birthDate = new Date(patient.birth_date);
-        if (!isNaN(birthDate.getTime())) { // Check for valid date
-          const today = new Date();
-          let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-          const m = today.getMonth() - birthDate.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            calculatedAge--;
-          }
-          age = calculatedAge >= 0 ? calculatedAge : null; 
-        }
-      }
-      
-      // Better name formatting with proper fallbacks
-      let fullName = "Unknown";
-      if (user && (user.first_name || user.last_name)) {
-        fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
-        console.log(`Found user name: ${fullName} for request ${request.id}`);
-      } else {
-        console.log(`No user name found for request ${request.id}, using Unknown`);
-      }
-
-      return {
-        id: request.id,
-        external_id: request.external_id || request.id.substring(0, 8), // Use external_id or part of UUID as external ID
-        patientId: request.patient_id || '',
-        userId: request.user_id || '',
-        patientName: fullName,
-        age: age,
-        requestDate: request.created_at,
-        status: request.status,
-        medicalCondition: request.medical_condition,
-        preferences: request.preferences || "",
-        medicationHistory: request.medication_history || "",
-        additionalNotes: request.additional_notes || "",
-        doctorNotes: request.doctor_notes || "",
-        totalAmount: request.total_amount || 0,
-        profileImage: `/user-icon.svg`,
-        products: request.prescription_request_products?.map((prp: any) => ({
-          id: prp.products.id,
-          name: prp.products.name,
-          quantityGrams: prp.quantity_grams,
-          unit: "g",
-        })) || [],
-      }
-    })
-
-    return transformedData
-  } catch (error) {
-    console.error("Error in getPrescriptionRequests:", error)
-    return []
+  } else if (rawItem.user_id && (type === 'pending' || type === 'denied')) { // user_id directly on request for pending/denied
+    userResult = userMap.get(rawItem.user_id) || { id: rawItem.user_id };
+    const foundPatientForUser = Array.from(patientMap.values()).find(p => p.user_id === rawItem.user_id);
+    if (foundPatientForUser) patientResult = foundPatientForUser;
   }
-}
 
-export async function getPendingPrescriptions(): Promise<{ success: boolean; error?: string; data: any[] }> {
-  try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: requestsData, error: requestsError } = await supabase
-      .from("prescription_requests")
-      .select(`
-        id,
-        external_id,
-        status,
-        medical_condition,
-        preferences,
-        medication_history,
-        additional_notes,
-        doctor_notes,
-        created_at,
-        patient_id,
-        user_id,
-        total_amount,
-        request_products!inner(
-          quantity_grams,
-          products!inner(id, name)
-        )
-      `)
-      .in("status", ['new', 'info_requested'])
-      .order("created_at", { ascending: false });
-
-    if (requestsError) {
-      console.error("Error fetching pending prescription requests:", requestsError);
-      return { success: false, error: requestsError.message, data: [] };
-    }
-
-    if (!requestsData || requestsData.length === 0) {
-      return { success: true, data: [] };
-    }
-
-    // Get unique patient_ids and user_ids from the requests
-    const requestPatientIds = [...new Set(requestsData.map(req => req.patient_id).filter(id => id))];
-    const requestUserIds = [...new Set(requestsData.map(req => req.user_id).filter(id => id))];
-
-    let patients: any[] = [];
-    if (requestPatientIds.length > 0) {
-      const { data: fetchedPatients, error: patientError } = await supabase
-        .from("patients")
-        .select("id, user_id, birth_date")
-        .in('id', requestPatientIds);
-      if (patientError) {
-        console.error("Error fetching patients:", patientError);
-        return { success: false, error: patientError.message, data: [] };
+  // 2. Calculate age
+  if (patientResult && patientResult.birth_date) {
+    const birthDateObj = new Date(patientResult.birth_date);
+    if (!isNaN(birthDateObj.getTime())) {
+      const today = new Date();
+      let calculatedAge = today.getFullYear() - birthDateObj.getFullYear();
+      const m = today.getMonth() - birthDateObj.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
+        calculatedAge--;
       }
-      patients = fetchedPatients || [];
+      age = calculatedAge >= 0 ? calculatedAge : null;
     }
+  }
 
-    const patientMap = new Map(patients.map(p => [p.id, p]));
+  const patientFullName = `${userResult?.first_name || ''} ${userResult?.last_name || ''}`.trim() || "Unbekannter Patient";
+  const relevantDoctorName = rawItem.doctor_id ? doctorNameMap.get(rawItem.doctor_id) : undefined;
 
-    // Combine all user_ids that need fetching
-    const allUserIdsToFetch = [...new Set([
-      ...requestUserIds, // user_id directly on the request
-      ...patients.map(p => p.user_id).filter(id => id) // user_id from fetched patients
-    ])];
-    
-    let users: any[] = [];
-    if (allUserIdsToFetch.length > 0) {
-        const { data: fetchedUsers, error: usersError } = await supabase
-            .from("users") // Assuming your public user table is named 'users'
-            .select("id, first_name, last_name, email")
-            .in('id', allUserIdsToFetch);
-        if (usersError) {
-            console.error("Error fetching users:", usersError);
-            return { success: false, error: usersError.message, data: [] };
-        }
-        users = fetchedUsers || [];
-    }
-    const userMap = new Map(users.map(u => [u.id, u]));
+  const baseResult: Partial<PatientRequestType> = {
+    id: rawItem.id,
+    external_id: rawItem.external_id || rawItem.id.substring(0, 8),
+    patientId: rawItem.patient_id || patientResult?.id || null,
+    userId: patientResult?.user_id || userResult?.id || null,
+    patientName: patientFullName,
+    age: age,
+    requestDate: rawItem.created_at,
+    status: rawItem.status,
+    totalAmount: rawItem.total_amount != null ? Number(rawItem.total_amount) : undefined,
+    profileImage: patientFullName === "Unbekannter Patient" || !patientFullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(patientFullName)}`,
+    medicalCondition: rawItem.medical_condition || "N/A",
+    preferences: rawItem.preferences || "N/A",
+    medicationHistory: rawItem.medication_history || "N/A",
+    additionalNotes: rawItem.additional_notes || "N/A",
+  };
 
-    // Transform the data
-    const transformedData = requestsData.map((request: any) => {
-      let userResult: any = { id: '', first_name: null, last_name: null, email: '' };
-      let patientResult: any = { id: '', user_id: null, birth_date: null };
-      let age: number | null = null;
-
-      if (request.patient_id) {
-        patientResult = patientMap.get(request.patient_id) || { id: request.patient_id, user_id: request.user_id, birth_date: null };
-        const foundPatientInMap = patientMap.get(request.patient_id);
-        if (foundPatientInMap) patientResult = foundPatientInMap; // Prioritize full patient record from map
-
-        if (patientResult && patientResult.user_id) {
-          userResult = userMap.get(patientResult.user_id) || { id: patientResult.user_id };
-        }
-      } else if (request.user_id) { // If no patient_id, use user_id from request
-        userResult = userMap.get(request.user_id) || { id: request.user_id };
-        // Attempt to find associated patient data if request was linked by user_id
-        const foundPatientForUser = patients.find(p => p.user_id === request.user_id);
-        if (foundPatientForUser) patientResult = foundPatientForUser;
-      }
-
-      if (patientResult && patientResult.birth_date) {
-        const birthDateObj = new Date(patientResult.birth_date);
-        if (!isNaN(birthDateObj.getTime())) {
-          const today = new Date();
-          let calculatedAge = today.getFullYear() - birthDateObj.getFullYear();
-          const m = today.getMonth() - birthDateObj.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
-            calculatedAge--;
-          }
-          age = calculatedAge >= 0 ? calculatedAge : null;
-        }
-      }
-
-      const fullName = `${userResult.first_name || ""} ${userResult.last_name || ""}`.trim() || "N/A";
-
-      return {
-        id: request.id,
-        external_id: request.external_id || request.id.substring(0, 8),
-        patientId: request.patient_id || patientResult?.id || null,
-        userId: request.user_id || userResult?.id || null,
-        patientName: fullName,
-        age: age,
-        requestDate: request.created_at,
-        status: request.status,
-        medicalCondition: request.medical_condition || "N/A",
-        preferences: request.preferences || "N/A",
-        medicationHistory: request.medication_history || "N/A",
-        additionalNotes: request.additional_notes || "N/A",
-        doctorNotes: request.doctor_notes || "",
-        totalAmount: request.total_amount != null ? Number(request.total_amount) : undefined,
-        profileImage: fullName === "N/A" || !fullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
-        products: request.request_products?.map((prp: any) => ({
-          id: prp.products.id,
-          name: prp.products.name,
-          quantity: prp.quantity_grams, // Align with fetched field name
-          unit: "g", // Hardcoded to grams
-        })) || [],
-      };
-    });
-
-    return { success: true, data: transformedData };
-  } catch (error) {
-    console.error("Error in getPendingPrescriptions:", error);
+  if (type === 'denied') {
     return {
-      success: false,
-      error: error instanceof Error ? error.message : "An unknown error occurred",
-      data: [],
+      ...baseResult,
+      deniedDate: rawItem.updated_at,
+      doctorNotes: rawItem.doctor_notes || "Kein Grund angegeben.",
+      deniedBy: relevantDoctorName,
+      products: rawItem.request_products?.map((prp: any) => ({
+        id: prp.products.id,
+        name: prp.products.name,
+        quantity: prp.quantity_grams,
+        unit: "g",
+      })) || [],
     };
-  }
-}
-
-export async function getDeniedPrescriptions(): Promise<{ success: boolean; error?: string; data: any[] }> {
-  try {
-    const supabase = await createServerSupabaseClient();
-
-    const { data: requestsData, error: requestsError } = await supabase
-      .from("prescription_requests")
-      .select(`
-        id,
-        external_id,
-        status,
-        medical_condition,
-        preferences,
-        medication_history,
-        additional_notes,
-        doctor_notes,
-        created_at,
-        updated_at,
-        patient_id,
-        user_id,
-        doctor_id,
-        total_amount,
-        request_products!inner(
-          quantity_grams,
-          products!inner(id, name)
-        )
-      `)
-      .eq("status", 'denied') // Filter for denied status
-      .order("updated_at", { ascending: false }); // Order by when it was last updated (denied date)
-
-    if (requestsError) {
-      console.error("Error fetching denied prescription requests:", requestsError);
-      return { success: false, error: requestsError.message, data: [] };
+  } else if (type === 'pending') {
+    if ((rawItem.status === 'new' || rawItem.status === 'info_requested') && rawItem.request_products) {
+        console.log(`[_transformItemToPatientRequestView for PENDING] Request ID: ${rawItem.id}, request_products:`, JSON.stringify(rawItem.request_products, null, 2));
     }
-
-    if (!requestsData || requestsData.length === 0) {
-      return { success: true, data: [] };
-    }
-
-    // Get unique patient_ids and user_ids from the requests
-    const requestPatientIds = [...new Set(requestsData.map(req => req.patient_id).filter(id => id))];
-    const requestUserIds = [...new Set(requestsData.map(req => req.user_id).filter(id => id))];
-    const doctorIds = [...new Set(requestsData.map(req => req.doctor_id).filter(id => id))];
-
-
-    let patients: any[] = [];
-    if (requestPatientIds.length > 0) {
-      const { data: fetchedPatients, error: patientError } = await supabase
-        .from("patients")
-        .select("id, user_id, birth_date")
-        .in('id', requestPatientIds);
-      if (patientError) {
-        console.error("Error fetching patients for denied requests:", patientError);
-        return { success: false, error: patientError.message, data: [] };
-      }
-      patients = fetchedPatients || [];
-    }
-    const patientMap = new Map(patients.map(p => [p.id, p]));
-
-    // Combine all user_ids that need fetching (from requests, patients)
-    const allUserIdsToFetch = [...new Set([
-      ...requestUserIds, 
-      ...patients.map(p => p.user_id).filter(id => id)
-    ])];
-    
-    let users: any[] = []; // For patient users
-    if (allUserIdsToFetch.length > 0) {
-        const { data: fetchedUsers, error: usersError } = await supabase
-            .from("users") 
-            .select("id, first_name, last_name, email")
-            .in('id', allUserIdsToFetch);
-        if (usersError) {
-            console.error("Error fetching users for denied requests:", usersError);
-            return { success: false, error: usersError.message, data: [] };
-        }
-        users = fetchedUsers || [];
-    }
-    const userMap = new Map(users.map(u => [u.id, u]));
-
-    let doctors: any[] = []; // For doctor users
-    if (doctorIds.length > 0) {
-      const { data: fetchedDoctors, error: doctorsError } = await supabase
-        .from("doctors") // Assuming your doctors table
-        .select("id, user_id, users!inner(first_name, last_name)") // Fetch doctor's name via users table
-        .in('id', doctorIds);
-      if (doctorsError) {
-        console.error("Error fetching doctors for denied requests:", doctorsError);
-        // Non-critical, so we can proceed without doctor names if this fails
-      }
-      doctors = fetchedDoctors || [];
-    }
-    const doctorMap = new Map(doctors.map(d => [d.id, d]));
-
-
-    // Transform the data
-    const transformedData = requestsData.map((request: any) => {
-      let userResult: any = { id: '', first_name: null, last_name: null, email: '' };
-      let patientResult: any = { id: '', user_id: null, birth_date: null };
-      let age: number | null = null;
-      let doctorName: string | null = null;
-
-      if (request.patient_id) {
-        patientResult = patientMap.get(request.patient_id) || { id: request.patient_id, user_id: request.user_id, birth_date: null };
-        if (patientResult && patientResult.user_id) {
-          userResult = userMap.get(patientResult.user_id) || { id: patientResult.user_id };
-        }
-      } else if (request.user_id) { 
-        userResult = userMap.get(request.user_id) || { id: request.user_id };
-        const foundPatientForUser = patients.find(p => p.user_id === request.user_id);
-        if (foundPatientForUser) patientResult = foundPatientForUser;
-      }
-
-      if (patientResult && patientResult.birth_date) {
-        const birthDateObj = new Date(patientResult.birth_date);
-        if (!isNaN(birthDateObj.getTime())) {
-          const today = new Date();
-          let calculatedAge = today.getFullYear() - birthDateObj.getFullYear();
-          const m = today.getMonth() - birthDateObj.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
-            calculatedAge--;
-          }
-          age = calculatedAge >= 0 ? calculatedAge : null;
-        }
-      }
-
-      // Correctly placed doctor_id check
-      if (request.doctor_id) {
-        const doctor = doctorMap.get(request.doctor_id);
-        if (doctor && doctor.users) {
-          doctorName = `${doctor.users.first_name || ''} ${doctor.users.last_name || ''}`.trim();
-        }
-      }
-
-      const patientFullName = `${userResult?.first_name || ''} ${userResult?.last_name || ''}`.trim() || "Unbekannter Patient";
-      // Removed duplicate fullName, using patientFullName instead
-
-      return {
-        id: request.id,
-        external_id: request.external_id || request.id.substring(0, 8),
-        patientId: request.patient_id || patientResult?.id || null,
-        // userId: request.user_id || userResult?.id || null, // Not directly part of PatientRequest, patientId is used
-        patientName: patientFullName,
-        age: age,
-        requestDate: request.created_at,
-        deniedDate: request.updated_at, // Use updated_at as deniedDate
-        status: request.status,
-        medicalCondition: request.medical_condition || "N/A",
-        preferences: request.preferences || "N/A",
-        medicationHistory: request.medication_history || "N/A",
-        additionalNotes: request.additional_notes || "N/A",
-        doctorNotes: request.doctor_notes || "Kein Grund angegeben.", // Denial reason
-        deniedBy: doctorName || undefined, // Doctor who denied, ensure undefined if null
-        totalAmount: request.total_amount != null ? Number(request.total_amount) : undefined,
-        profileImage: patientFullName === "Unbekannter Patient" || !patientFullName ? "/user-icon.svg" : `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(patientFullName)}`,
-        products: request.request_products?.map((prp: any) => ({
-          id: prp.products.id,
-          name: prp.products.name,
-          quantity: prp.quantity_grams, // Assuming quantity is in request_products
-          unit: "g", 
-        })) || [],
-      };
-    });
-
-    return { success: true, data: transformedData };
-  } catch (error) {
-    console.error("Error in getDeniedPrescriptions:", error);
     return {
-      success: false,
-      error: error instanceof Error ? error.message : "An unknown error occurred",
-      data: [],
+      ...baseResult,
+      doctorNotes: rawItem.doctor_notes || "",
+      products: rawItem.request_products?.map((prp: any) => ({
+        id: prp.products.id,
+        name: prp.products.name,
+        quantity: prp.quantity_grams,
+        unit: "g",
+      })) || [],
+    };
+  } else if (type === 'approved') {
+    let parsedProducts: ProductType[] = [];
+    if (rawItem.prescription_plan) {
+      try {
+        const plan = typeof rawItem.prescription_plan === 'string'
+                        ? JSON.parse(rawItem.prescription_plan)
+                        : rawItem.prescription_plan;
+        if (Array.isArray(plan)) {
+          parsedProducts = plan.map((p_item: any) => ({
+            id: p_item.productId || p_item.id || String(Date.now() + Math.random()),
+            name: p_item.productName || p_item.name || "Unknown Product",
+            quantity: p_item.quantity != null ? Number(p_item.quantity) : undefined,
+            unit: p_item.unit || "Stk.",
+          }));
+        }
+      } catch (e) {
+        console.error(`Failed to parse prescription_plan for prescription ${rawItem.id}:`, e, "Plan content:", rawItem.prescription_plan);
+      }
+    }
+    return {
+      ...baseResult,
+      doctorNotes: rawItem.notes, // Approval notes from 'prescriptions' table's 'notes' field
+      approvedBy: relevantDoctorName,
+      products: parsedProducts,
+      medicalCondition: "N/A", 
+      preferences: "N/A",
+      medicationHistory: "N/A",
+      additionalNotes: "N/A",
     };
   }
+  return baseResult; 
 }
 
+// The rest of the functions (getApprovedPrescriptions, getPendingPrescriptions, etc.) will follow here.
+// For example, the next line would typically be the start of the first exported function:
 export async function getApprovedPrescriptions() {
   try {
     const supabase = await createServerSupabaseClient()
@@ -649,67 +210,11 @@ export async function getApprovedPrescriptions() {
       }
     }
 
-    // Transform the data to match the expected format
-    const transformedData = data.map((prescription) => {
-      const patient = patientMap.get(prescription.patient_id) || { id: '', user_id: '', birth_date: null };
-      const user = userMap.get(patient.user_id) || { id: '', first_name: null, last_name: null, email: '' };
-      const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown Patient";
-      const birthDate = patient.birth_date ? new Date(patient.birth_date) : null;
-      let age = null;
-      if (birthDate) {
-        const today = new Date();
-        age = today.getFullYear() - birthDate.getFullYear();
-        const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-          age--;
-        }
-      }
-      const approverName = doctorMap.get(prescription.doctor_id) || "Unknown Doctor";
-
-      return {
-        id: prescription.id,
-        external_id: prescription.id.substring(0, 8), // Consistent external_id
-        patientId: prescription.patient_id,
-        patientName: fullName,
-        age: age,
-        requestDate: prescription.created_at, // Original request/creation date of this prescription entry
-        // If prescription_date is the actual approval date, use it for a specific field if needed by UI
-        // For PatientRequestCard, 'requestDate' is generally the primary date shown.
-        // We can add 'approvedDate' if PatientRequestCard is modified to show it.
-        status: prescription.status as "new" | "approved" | "denied" | "info_requested",
-        doctorNotes: prescription.notes, // Notes from the 'prescriptions' table
-        approvedBy: approverName, // Name of the doctor who approved
-        totalAmount: prescription.total_amount,
-        profileImage: `/placeholder.svg?height=64&width=64&query=${encodeURIComponent(fullName)}`,
-        // Placeholder fields for PatientRequest compatibility
-        medicalCondition: "N/A",
-        preferences: "N/A",
-        medicationHistory: "N/A",
-        products: (() => {
-          // Define Product type inline or import if already defined elsewhere and accessible
-          type Product = { id: string; name: string; quantity?: number };
-          let productsData: Product[] = [];
-          if (prescription.prescription_plan) {
-            try {
-              const plan = typeof prescription.prescription_plan === 'string' 
-                            ? JSON.parse(prescription.prescription_plan) 
-                            : prescription.prescription_plan;
-              if (Array.isArray(plan)) {
-                productsData = plan.map((p_item: any) => ({
-                  id: p_item.productId || p_item.id || String(Date.now() + Math.random()), // Ensure unique ID if missing
-                  name: p_item.productName || p_item.name || "Unknown Product",
-                  quantity: p_item.quantity || undefined,
-                  // unit is not part of PatientRequest.Product, so omit
-                }));
-              }
-            } catch (e) {
-              console.error(`Failed to parse prescription_plan for prescription ${prescription.id}:`, e, "Plan content:", prescription.prescription_plan);
-            }
-          }
-          return productsData;
-        })(),
-      }
-    })
+    // Transform the data using the utility function
+    // The existing doctorMap is already Map<string, string> for approver names
+    const transformedData = data.map((prescription: any) => 
+      _transformItemToPatientRequestView(prescription, 'approved', patientMap, userMap, doctorMap)
+    );
 
     return { success: true, data: transformedData }
   } catch (error) {
@@ -719,6 +224,190 @@ export async function getApprovedPrescriptions() {
       error: error instanceof Error ? error.message : "Unknown error",
       data: [],
     }
+  }
+}
+
+export async function getPendingPrescriptions(): Promise<{ success: boolean; data: PatientRequestType[]; error?: string }> {
+  try {
+    const supabase = await createServerSupabaseClient();
+
+    const { data: requestsData, error: requestsError } = await supabase
+      .from("prescription_requests")
+      .select(`
+        id,
+        external_id,
+        patient_id,
+        user_id,
+        status,
+        created_at,
+        updated_at,
+        doctor_notes,
+        medical_condition,
+        preferences,
+        medication_history,
+        additional_notes,
+        request_products!inner(
+          quantity_grams,
+          products!inner(id, name)
+        )
+      `)
+      .in("status", ["new", "info_requested"])
+      .order("created_at", { ascending: false });
+
+    if (requestsError) {
+      console.error("Error fetching pending prescription requests:", requestsError);
+      return { success: false, error: requestsError.message, data: [] };
+    }
+
+    if (!requestsData || requestsData.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const patientIds = requestsData.map(req => req.patient_id).filter(id => id) as string[];
+    const userIdsFromRequests = requestsData.map(req => req.user_id).filter(id => id) as string[];
+
+    let patientMap = new Map<string, any>();
+    let userMap = new Map<string, any>();
+    
+    const allUserIdsToFetch = new Set<string>(userIdsFromRequests);
+
+    if (patientIds.length > 0) {
+      const { data: patients, error: patientError } = await supabase
+        .from("patients")
+        .select(`id, user_id, birth_date`)
+        .in('id', patientIds);
+
+      if (patientError) {
+        console.error("Error fetching patients for pending requests:", patientError);
+        // Continue without full patient data or return error
+      } else if (patients) {
+        patientMap = new Map(patients.map(p => [p.id, p]));
+        patients.forEach(p => { if (p.user_id) allUserIdsToFetch.add(p.user_id); });
+      }
+    }
+    
+    if (allUserIdsToFetch.size > 0) {
+        const { data: users, error: usersError } = await supabase
+            .from("users")
+            .select(`id, first_name, last_name, email`)
+            .in('id', Array.from(allUserIdsToFetch));
+
+        if (usersError) {
+            console.error("Error fetching users for pending requests:", usersError);
+            // Continue without full user data or return error
+        } else if (users) {
+            userMap = new Map(users.map(u => [u.id, u]));
+        }
+    }
+
+    const transformedData = requestsData.map((request: any) =>
+      _transformItemToPatientRequestView(request, 'pending', patientMap, userMap, new Map()) // No specific doctor for pending items in this context
+    );
+
+    return { success: true, data: transformedData as PatientRequestType[] };
+  } catch (error) {
+    console.error("Error in getPendingPrescriptions:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error in getPendingPrescriptions",
+      data: [],
+    };
+  }
+}
+
+export async function getDeniedPrescriptions(): Promise<{ success: boolean; data: PatientRequestType[]; error?: string }> {
+  try {
+    const supabase = await createServerSupabaseClient();
+
+    const { data: requestsData, error: requestsError } = await supabase
+      .from("prescription_requests")
+      .select(`
+        id,
+        external_id,
+        patient_id,
+        user_id,
+        doctor_id,
+        status,
+        created_at,
+        updated_at,
+        doctor_notes,
+        medical_condition,
+        preferences,
+        medication_history,
+        additional_notes,
+        request_products!inner(
+          quantity_grams,
+          products!inner(id, name)
+        )
+      `)
+      .eq("status", "denied")
+      .order("updated_at", { ascending: false });
+
+    if (requestsError) {
+      console.error("Error fetching denied prescription requests:", requestsError);
+      return { success: false, error: requestsError.message, data: [] };
+    }
+
+    if (!requestsData || requestsData.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const patientIds = requestsData.map(req => req.patient_id).filter(id => id) as string[];
+    const userIdsFromRequests = requestsData.map(req => req.user_id).filter(id => id) as string[];
+    const denyingDoctorIds = requestsData.map(req => req.doctor_id).filter(id => id) as string[];
+
+
+    let patientMap = new Map<string, any>();
+    let userMap = new Map<string, any>();
+    let denyingDoctorNameMap = new Map<string, string>();
+
+    const allUserIdsToFetch = new Set<string>([...userIdsFromRequests, ...denyingDoctorIds]);
+
+
+    if (patientIds.length > 0) {
+      const { data: patients, error: patientError } = await supabase
+        .from("patients")
+        .select(`id, user_id, birth_date`)
+        .in('id', patientIds);
+
+      if (patientError) {
+        console.error("Error fetching patients for denied requests:", patientError);
+      } else if (patients) {
+        patientMap = new Map(patients.map(p => [p.id, p]));
+        patients.forEach(p => { if (p.user_id) allUserIdsToFetch.add(p.user_id); });
+      }
+    }
+    
+    if (allUserIdsToFetch.size > 0) {
+        const { data: usersAndDoctors, error: usersError } = await supabase
+            .from("users")
+            .select(`id, first_name, last_name, email`)
+            .in('id', Array.from(allUserIdsToFetch));
+
+        if (usersError) {
+            console.error("Error fetching users/doctors for denied requests:", usersError);
+        } else if (usersAndDoctors) {
+            usersAndDoctors.forEach(u => {
+                userMap.set(u.id, u); // Store all as potential users
+                if (denyingDoctorIds.includes(u.id)) { // If this ID was in doctorIds, also map their name
+                    denyingDoctorNameMap.set(u.id, `${u.first_name || ""} ${u.last_name || ""}`.trim() || "Unknown Doctor");
+                }
+            });
+        }
+    }
+
+    const transformedData = requestsData.map((request: any) =>
+      _transformItemToPatientRequestView(request, 'denied', patientMap, userMap, denyingDoctorNameMap)
+    );
+
+    return { success: true, data: transformedData as PatientRequestType[] };
+  } catch (error) {
+    console.error("Error in getDeniedPrescriptions:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error in getDeniedPrescriptions",
+      data: [],
+    };
   }
 }
 
