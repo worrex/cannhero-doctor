@@ -64,6 +64,7 @@ export default function DashboardPage() {
               totalAmount: pr.totalAmount ?? null, // Handle undefined from PatientRequest
               notes: pr.additionalNotes ?? null, // Use additionalNotes from patient for general notes
               profileImage: pr.profileImage || '/user-icon.svg', // Fallback if not provided
+              products: pr.products || [], // Include products from the patient request
             })
           );
           setPrescriptions(transformedPendingPrescriptions);

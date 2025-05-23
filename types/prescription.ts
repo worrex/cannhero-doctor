@@ -1,3 +1,5 @@
+import { Product } from './patient';
+
 export interface Prescription {
   id: string;
   patientId: string | null;
@@ -11,4 +13,5 @@ export interface Prescription {
   totalAmount: number | null;
   notes: string | null; // Represents doctor's notes on the prescription
   profileImage: string; // Assumes a fallback is always provided if original is missing
+  products: Product[]; // Add products array to match PatientRequest interface
 }

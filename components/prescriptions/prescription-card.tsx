@@ -151,10 +151,18 @@ export function PrescriptionCard({ prescription, isEven, onPatientClick }: Presc
               <div className="mt-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700">Verschreibungsplan</h4>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {prescription.prescriptionPlan || "Kein Plan angegeben"}
-                    </p>
+                    <h4 className="text-sm font-medium text-gray-700">Angefragte Produkte</h4>
+                    {prescription.products && prescription.products.length > 0 ? (
+                      <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 mt-1">
+                        {prescription.products.map((product) => (
+                          <li key={product.id}>
+                            {product.name}{product.quantity ? ` (Menge: ${product.quantity})` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-600 mt-1">Keine Produkte angefragt.</p>
+                    )}
                   </div>
                   <div>
                     <h4 className="text-sm font-medium text-gray-700">Betrag</h4>
