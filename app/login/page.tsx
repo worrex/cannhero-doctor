@@ -1,13 +1,9 @@
 "use client"
 import Link from "next/link"
 import { Lock } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { LoginForm } from "@/components/login-form"
-import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginPage() {
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
 
   // Redirects are now handled by the auth context
   // This component just renders the login form
